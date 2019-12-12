@@ -11,5 +11,5 @@ PRIMITIVES = [
     'LinearTanh_2',
     'LinearTanh_4',
     'LinearTanh_8',
-    'LinearTanh_16'
+    'LinearTanh_16',
 ]

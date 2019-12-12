@@ -10,6 +10,7 @@ import argparse
 import torch.nn as nn
 import torch.utils
 import torch.nn.functional as F
+from scipy import integrate
 
 from model_search import Network
 from architect import Architect
@@ -24,13 +25,14 @@ parser.add_argument('--epochs', type=int, default=50, help='num of training epoc
 parser.add_argument('--network_inputsize', type=int, default=2, help='input size of the network')
 parser.add_argument('--network_outputsize', type=int, default=2, help='output size of the network')
 parser.add_argument('--max_width', type=int, default=16, help='max width of the network')
-parser.add_argument('--max_depth', type=int, default=8, help='total number of layers in the network')
+parser.add_argument('--max_depth', type=int, default=4, help='total number of layers in the network')
 parser.add_argument('--model_path', type=str, default='saved_models', help='path to save the model')
 parser.add_argument('--save', type=str, default='test', help='experiment name')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
 parser.add_argument('--arch_learning_rate', type=float, default=3e-4, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
+parser.add_argument('--report_freq', type=float, default=5, help='report frequency')
 args = parser.parse_args()
 
 args.save = 'search-{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
@@ -55,13 +57,13 @@ def dX_dt(X, t=0):
                   -c*X[1] + d*b*X[0]*X[1] ])
     return p  
 
-t_train = torch.linspace(0.,25.,100)
+t_train = torch.linspace(0.,25.,1000)
 t_eval = torch.linspace(0.,100.,1000)
 X0 = torch.tensor([10.,5.])
 X_train = integrate.odeint(dX_dt, X0.numpy(), t_train.numpy())
 X_eval = integrate.odeint(dX_dt,X0.numpy(),t_eval.numpy())
 dx_dt_train = dX_dt(X_train.T)
-dx_dt_eval = dX_dt(X_eval.Ts)
+dx_dt_eval = dX_dt(X_eval.T)
 
 noisy_dxdt = dx_dt_train #+ 0.75*np.random.randn(X.shape[1],X.shape[0])
 
@@ -70,24 +72,23 @@ y_train = torch.from_numpy(noisy_dxdt.T).float()
 train_queue = (x_train,y_train)
 
 x_eval = torch.from_numpy(X_eval).float()
-y_eval = torch.from_numpy(dX_dt_eval.T).float()
+y_eval = torch.from_numpy(dx_dt_eval.T).float()
 valid_queue = (x_eval,y_eval)
 
 def main():
-    if not torch.cuda.is_available():
-        logging.info('no gpu device available')
-        sys.exit(1)
+    # if not torch.cuda.is_available():
+    #     logging.info('no gpu device available')
+    #     sys.exit(1)
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    logging.info('gpu device = %d' % args.gpu)
-    logging.info("args = %s", args)
+    # logging.info('gpu device = %d' % args.gpu)
+    # logging.info("args = %s", args)
 
-    criterion = nn.torch.nn.MSELoss()
+    criterion = nn.MSELoss()
     # criterion = criterion.cuda()
-    model = Network(args.network_inputsize, args.max_width, args.max_depth, criterion)
+    model = Network(args.network_inputsize, args.network_outputsize, args.max_width, args.max_depth, criterion)
     # model = model.cuda()
-    logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
 
     optimizer = torch.optim.SGD(
                                 model.parameters(),
@@ -96,7 +97,6 @@ def main():
                                 weight_decay=args.weight_decay
                                 )
 
-    num_train = len(train_data)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                                                            optimizer,
                                                            float(args.epochs),
@@ -106,19 +106,18 @@ def main():
     architect = Architect(model, args)
 
     for epoch in range(args.epochs):
-        scheduler.step()
         lr = scheduler.get_lr()[0]
         logging.info('epoch %d lr %e', epoch, lr)
 
         genotype = model.genotype()
         logging.info('genotype = %s', genotype)
 
-        print(F.softmax(model.alphas_normal, dim=-1))
-        print(F.softmax(model.alphas_reduce, dim=-1))
+        print(F.softmax(model.w_alpha, dim=-1))
 
         # training
         train_acc, train_obj = train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, epoch)
         logging.info('train_acc %f', train_acc)
+        scheduler.step()
 
         # validation
         valid_acc, valid_obj = infer(valid_queue, model, criterion, epoch)
@@ -131,25 +130,25 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
     objs = utils.AverageMeter()
     mae = utils.AverageMeter()
 
-    n = input.size(0)
+    n = train_queue[0].shape[0]
 
     architect.step(train_queue[0], train_queue[1], valid_queue[0], valid_queue[1], lr, optimizer, unrolled=args.unrolled)
 
     optimizer.zero_grad()
-    logits = model(input)
-    loss = criterion(logits, target)
+    logits = model(train_queue[0])
+    loss = criterion(logits, train_queue[1])
 
     loss.backward()
     optimizer.step()
 
-    train_mae = utils.accuracy(logits, target)
-    objs.update(loss.data[0], n)
-    mae.update(train_mae.data[0], n)
+    train_mae = utils.accuracy(logits, train_queue[1])
+    objs.update(loss.data.numpy(), n)
+    mae.update(train_mae.data.numpy(), n)
 
     if step % args.report_freq == 0:
-        logging.info('train %03d %e %f %f', step, objs.avg, mae.avg)
+        logging.info('train %03d %e %f', step, objs.avg, mae.avg)
 
-    return top1.avg, objs.avg
+    return mae.avg, objs.avg
 
 
 def infer(valid_queue, model, criterion, step):
@@ -157,19 +156,16 @@ def infer(valid_queue, model, criterion, step):
     mae = utils.AverageMeter()
 
     with torch.no_grad():
-        input = Variable(input, volatile=True).cuda()
-        target = Variable(target, volatile=True).cuda(async=True)
+        logits = model(valid_queue[0])
+        loss = criterion(logits, valid_queue[1])
 
-        logits = model(input)
-        loss = criterion(logits, target)
-
-        train_mae = utils.accuracy(logits, target)
-        n = input.size(0)
-        objs.update(loss.data[0], n)
-        mae.update(train_mae.data[0], n)
+        val_mae = utils.accuracy(logits, valid_queue[1])
+        n = valid_queue[0].shape[0]
+        objs.update(loss.data.numpy(), n)
+        mae.update(val_mae.data.numpy(), n)
 
         if step % args.report_freq == 0:
-            logging.info('valid %03d %e %f %f', step, objs.avg, mae.avg)
+            logging.info('valid %03d %e %f', step, objs.avg, mae.avg)
 
     return mae.avg, objs.avg
 

@@ -11,15 +11,13 @@ class AverageMeter(object):
         self.reset()
 
     def reset(self):
-    """ Reset the counters to zeros."""
-
+        """ Reset the counters to zeros."""
         self.avg = 0
         self.sum = 0
         self.cnt = 0
 
     def update(self, val, n=1):
-    """ Update the counters based on a running count."""
-
+        """ Update the counters based on a running count."""
         self.sum += val * n
         self.cnt += n
         self.avg = self.sum / self.cnt
@@ -52,13 +50,13 @@ def load(model, model_path):
 
 
 def create_exp_dir(path, scripts_to_save=None):
-""" Create  directory for different experiments performed."""
+    """ Create  directory for different experiments performed."""
     if not os.path.exists(path):
         os.mkdir(path)
         print('Experiment dir : {}'.format(path))
 
     if scripts_to_save is not None:
         os.mkdir(os.path.join(path, 'scripts'))
-            for script in scripts_to_save:
-                dst_file = os.path.join(path, 'scripts', os.path.basename(script))
-                shutil.copyfile(script, dst_file)
+        for script in scripts_to_save:
+            dst_file = os.path.join(path, 'scripts', os.path.basename(script))
+            shutil.copyfile(script, dst_file)

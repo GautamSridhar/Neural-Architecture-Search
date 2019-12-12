@@ -7,14 +7,14 @@ OPS = {
        'LinearReLU_4': lambda in_feature: LinearReLU(in_feature=in_feature, out_feature=4),
        'LinearReLU_8': lambda in_feature: LinearReLU(in_feature=in_feature, out_feature=8),
        'LinearReLU_16': lambda in_feature: LinearReLU(in_feature=in_feature, out_feature=16),
-       'LinearReLU_32': lambda in_feature: LinearReLU(in_feature=in_feature, out_feature=32),
-       'LinearReLU_64': lambda in_feature: LinearReLU(in_feature=in_feature, out_feature=64),
+       # 'LinearReLU_32': lambda in_feature: LinearReLU(in_feature=in_feature, out_feature=32),
+       # 'LinearReLU_64': lambda in_feature: LinearReLU(in_feature=in_feature, out_feature=64),
        'LinearTanh_2': lambda in_feature: LinearTanh(in_feature=in_feature, out_feature=2),
        'LinearTanh_4': lambda in_feature: LinearTanh(in_feature=in_feature, out_feature=4),
        'LinearTanh_8': lambda in_feature: LinearTanh(in_feature=in_feature, out_feature=8),
        'LinearTanh_16': lambda in_feature: LinearTanh(in_feature=in_feature, out_feature=16),
-       'LinearTanh_32': lambda in_feature: LinearTanh(in_feature=in_feature, out_feature=32),
-       'LinearTanh_64': lambda in_feature: LinearTanh(in_feature=in_feature, out_feature=64),
+       # 'LinearTanh_32': lambda in_feature: LinearTanh(in_feature=in_feature, out_feature=32),
+       # 'LinearTanh_64': lambda in_feature: LinearTanh(in_feature=in_feature, out_feature=64),
        # 'LinearSigmoid_2': lambda in_feature: LinearSigmoid(in_feature=in_feature, out_feature=2),
        'Identity': lambda in_feature: Identity()
       }
