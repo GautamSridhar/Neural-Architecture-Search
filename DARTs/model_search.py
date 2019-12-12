@@ -73,6 +73,12 @@ class Network(nn.Module):
         return h 
 
 
+    def new(self):
+        model_new = Network(self._network_inputsize, self._network_outputsize, self._max_width, self._max_depth, self._criterion)
+        for x, y in zip(model_new.arch_parameters(), self.arch_parameters()):
+            x.data.copy_(y.data)
+        return model_new
+
     def _initialize_alphas(self):
         num_op   = len(PRIMITIVES)
         num_node = self._max_depth

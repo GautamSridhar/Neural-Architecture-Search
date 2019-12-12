@@ -29,7 +29,7 @@ parser.add_argument('--max_depth', type=int, default=4, help='total number of la
 parser.add_argument('--model_path', type=str, default='saved_models', help='path to save the model')
 parser.add_argument('--save', type=str, default='test', help='experiment name')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
-parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
+parser.add_argument('--unrolled', action='store_true', default=True, help='use one-step unrolled validation loss')
 parser.add_argument('--arch_learning_rate', type=float, default=3e-4, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 parser.add_argument('--report_freq', type=float, default=5, help='report frequency')
