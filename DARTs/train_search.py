@@ -10,8 +10,10 @@ import argparse
 import torch.nn as nn
 import torch.utils
 import torch.nn.functional as F
-from scipy import integrate
 
+import matplotlib.pyplot as plt
+
+from scipy import integrate
 from model_search import Network
 from architect import Architect
 
@@ -21,16 +23,16 @@ parser.add_argument('--learning_rate', type=float, default=0.025, help='init lea
 parser.add_argument('--learning_rate_min', type=float, default=0.001, help='min learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
-parser.add_argument('--epochs', type=int, default=50, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=500, help='num of training epochs')
 parser.add_argument('--network_inputsize', type=int, default=2, help='input size of the network')
 parser.add_argument('--network_outputsize', type=int, default=2, help='output size of the network')
 parser.add_argument('--max_width', type=int, default=16, help='max width of the network')
 parser.add_argument('--max_depth', type=int, default=4, help='total number of layers in the network')
 parser.add_argument('--model_path', type=str, default='saved_models', help='path to save the model')
-parser.add_argument('--save', type=str, default='test', help='experiment name')
+parser.add_argument('--save', type=str, default='test-sched-highlr-seed1-unrf', help='experiment name')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
-parser.add_argument('--unrolled', action='store_true', default=True, help='use one-step unrolled validation loss')
-parser.add_argument('--arch_learning_rate', type=float, default=3e-4, help='learning rate for arch encoding')
+parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
+parser.add_argument('--arch_learning_rate', type=float, default=1e-2, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 parser.add_argument('--report_freq', type=float, default=5, help='report frequency')
 args = parser.parse_args()
@@ -59,11 +61,15 @@ def dX_dt(X, t=0):
 
 t_train = torch.linspace(0.,25.,1000)
 t_eval = torch.linspace(0.,100.,1000)
+t_test = torch.linspace(0,200,1000)
 X0 = torch.tensor([10.,5.])
 X_train = integrate.odeint(dX_dt, X0.numpy(), t_train.numpy())
 X_eval = integrate.odeint(dX_dt,X0.numpy(),t_eval.numpy())
+X_test = integrate.odeint(dX_dt, X0.numpy(),t_test.numpy())
+
 dx_dt_train = dX_dt(X_train.T)
 dx_dt_eval = dX_dt(X_eval.T)
+dx_dt_test = dX_dt(X_test.T)
 
 noisy_dxdt = dx_dt_train #+ 0.75*np.random.randn(X.shape[1],X.shape[0])
 
@@ -75,6 +81,10 @@ x_eval = torch.from_numpy(X_eval).float()
 y_eval = torch.from_numpy(dx_dt_eval.T).float()
 valid_queue = (x_eval,y_eval)
 
+x_test = torch.from_numpy(X_test).float()
+
+
+fig,ax = plt.subplots(figsize=(20,20))
 def main():
     # if not torch.cuda.is_available():
     #     logging.info('no gpu device available')
@@ -90,10 +100,10 @@ def main():
     model = Network(args.network_inputsize, args.network_outputsize, args.max_width, args.max_depth, criterion)
     # model = model.cuda()
 
-    optimizer = torch.optim.SGD(
+    optimizer = torch.optim.Adam(
                                 model.parameters(),
                                 args.learning_rate,
-                                momentum=args.momentum,
+                                #momentum=args.momentum,
                                 weight_decay=args.weight_decay
                                 )
 
@@ -105,8 +115,10 @@ def main():
 
     architect = Architect(model, args)
 
+    plt.ion()
     for epoch in range(args.epochs):
         lr = scheduler.get_lr()[0]
+        # lr = args.learning_rate
         logging.info('epoch %d lr %e', epoch, lr)
 
         genotype = model.genotype()
@@ -124,6 +136,13 @@ def main():
         logging.info('valid_acc %f', valid_acc)
 
         utils.save(model, os.path.join(args.save, 'weights.pt'))
+
+        plt.draw()
+        plt.pause(0.1)
+
+    plt.ioff()
+    plt.show()
+
 
 
 def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, step):
@@ -156,8 +175,11 @@ def infer(valid_queue, model, criterion, step):
     mae = utils.AverageMeter()
 
     with torch.no_grad():
+
         logits = model(valid_queue[0])
         loss = criterion(logits, valid_queue[1])
+
+        logits_test = model(x_test)
 
         val_mae = utils.accuracy(logits, valid_queue[1])
         n = valid_queue[0].shape[0]
@@ -166,6 +188,17 @@ def infer(valid_queue, model, criterion, step):
 
         if step % args.report_freq == 0:
             logging.info('valid %03d %e %f', step, objs.avg, mae.avg)
+            ax.cla()
+            # ax[0,1].cla()
+            ax.plot(t_test.numpy(),dx_dt_test.T,'g-',label='Test')
+            ax.plot(t_test.numpy(),logits_test.numpy(),'b-',label='Learned')
+            ax.legend()
+            ax.set_title("Learned regression")
+
+            # ax[0,1].plot(t_train.numpy(),true_y_train_node.numpy(), 'g-',label='Train',)
+            # ax[0,1].plot(t_train.numpy(),pred_y_train.numpy(), 'b-',label='Learned',)
+            # ax[0,1].legend()
+            # ax[0,1].set_title("Regression integrated")
 
     return mae.avg, objs.avg
 
