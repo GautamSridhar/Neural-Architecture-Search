@@ -1,0 +1,483 @@
+"""The module for training ENAS."""
+import contextlib
+import glob
+import math
+import os
+from scipy import integrate
+
+import numpy as np
+import torch
+from torch import nn
+import torch.nn.parallel
+
+import models
+import utils
+
+import time
+
+logger = utils.get_logger()
+
+def _get_optimizer(name):
+    if name.lower() == 'sgd':
+        optim = torch.optim.SGD
+    elif name.lower() == 'adam':
+        optim = torch.optim.Adam
+
+    return optim
+
+
+class Trainer(object):
+    """A class to wrap training code."""
+    def __init__(self, args):
+        """Constructor for training algorithm.
+        Args:
+            args: From command line, picked up by `argparse`.
+            dataset: Currently only `data.text.Corpus` is supported.
+        Initializes:
+            - Data: train, val and test.
+            - Model: shared and controller.
+            - Inference: optimizers for shared and controller parameters.
+            - Criticism: cross-entropy loss for training the shared model.
+        """
+        self.args = args
+        self.controller_step = 0
+        # self.cuda = args.cuda
+        self.epoch = 0
+        self.shared_step = 0
+        self.start_epoch = 0
+
+        # Data #############################
+
+        a = 1.
+        b = 0.1
+        c = 1.5
+        d = 0.75
+
+        def dX_dt(X, t=0):
+            p = np.array([ a*X[0] -   b*X[0]*X[1] ,
+                          -c*X[1] + d*b*X[0]*X[1] ])
+            return p  
+
+        t_train = torch.linspace(0.,25.,1000)
+        t_eval = torch.linspace(0.,100.,1000)
+        t_test = torch.linspace(0,200,1000)
+        X0 = torch.tensor([10.,5.])
+        X_train = integrate.odeint(dX_dt, X0.numpy(), t_train.numpy())
+        X_eval = integrate.odeint(dX_dt,X0.numpy(),t_eval.numpy())
+        X_test = integrate.odeint(dX_dt, X0.numpy(),t_test.numpy())
+
+        dx_dt_train = dX_dt(X_train.T)
+        dx_dt_eval = dX_dt(X_eval.T)
+        dx_dt_test = dX_dt(X_test.T)
+
+        noisy_dxdt = dx_dt_train #+ 0.75*np.random.randn(X.shape[1],X.shape[0])
+
+        x_train = torch.from_numpy(X_train).float()
+        y_train = torch.from_numpy(noisy_dxdt.T).float()
+        self.train_queue = (x_train,y_train)
+
+        x_eval = torch.from_numpy(X_eval).float()
+        y_eval = torch.from_numpy(dx_dt_eval.T).float()
+        self.valid_queue = (x_eval,y_eval)
+
+        x_test = torch.from_numpy(X_test).float()
+        y_test = torch.from_numpy(dx_dt_test.T).float()
+        self.test_queue = (x_test, y_test)
+
+        self.build_model()
+
+        if self.args.load_path:
+            self.load_model()
+
+        shared_optimizer = _get_optimizer(self.args.shared_optim)
+        controller_optimizer = _get_optimizer(self.args.controller_optim)
+
+        self.shared_optim = shared_optimizer(
+            self.shared.parameters(),
+            lr=self.args.shared_lr,
+            weight_decay=self.args.shared_l2_reg)
+
+        self.controller_optim = controller_optimizer(
+            self.controller.parameters(),
+            lr=self.args.controller_lr)
+
+        self.criterion_shared = nn.MSELoss()
+        self.criterion_controller = nn.L1Loss()
+
+    def build_model(self):
+        """Creates and initializes the shared and controller models."""
+        if self.args.network_type == 'Net':
+            self.shared = models.Network(self.args)
+        else:
+            raise NotImplementedError(f'Network type '
+                                      f'`{self.args.network_type}` is not '
+                                      f'defined')
+        self.controller = models.Controller(self.args)
+
+        # if self.args.num_gpu == 1:
+        #     self.shared.cuda()
+        #     self.controller.cuda()
+        # elif self.args.num_gpu > 1:
+        #     raise NotImplementedError('`num_gpu > 1` is in progress')
+
+    def train(self, single=False):
+        """Cycles through alternately training the shared parameters and the
+        controller, as described in Section 2.2, Training ENAS and Deriving
+        Architectures, of the paper.
+        From the paper (for Penn Treebank):
+        - In the first phase, shared parameters omega are trained for 400
+          steps, each on a minibatch of 64 examples.
+        - In the second phase, the controller's parameters are trained for 2000
+          steps.
+          
+        Args:
+            single (bool): If True it won't train the controller and use the
+                           same dag instead of derive().
+        """
+        dag = utils.load_dag(self.args) if single else None
+        
+        if self.args.shared_initial_step > 0: # This has to be set to be set to greater than zero for warmup
+            self.train_shared(self.args.shared_initial_step)
+            self.train_controller()
+
+        for self.epoch in range(self.start_epoch, self.args.max_epoch):
+            # 1. Training the shared parameters omega of the child models
+            self.train_shared(dag=dag)
+
+            # 2. Training the controller parameters theta
+            if not single:
+                self.train_controller()
+
+            if self.epoch % self.args.save_epoch == 0:
+                with torch.no_grad():
+                    best_dag = dag if dag else self.derive()
+                    self.evaluate(best_dag)  # What is max_num?
+                self.save_model()
+
+            # Add a learning rate scheduler here.
+
+
+    def get_loss(self, inputs, targets, dags, mode='Train'):
+        """Computes the loss for the same batch for M models.
+        This amounts to an estimate of the loss, which is turned into an
+        estimate for the gradients of the shared model.
+        """
+        if not isinstance(dags, list):
+            dags = [dags]
+
+        loss = 0
+        if mode == 'Train':
+            for dag in dags:
+                output = self.shared(inputs, dag)
+                sample_loss = self.criterion_shared(output, targets)
+                loss += sample_loss
+        elif mode == 'Valid':
+            for dag in dags:
+                output = self.shared(inputs, dag)
+                sample_loss = self.criterion_controller(output, targets)
+                loss += sample_loss
+
+        assert len(dags) == 1, 'there are multiple `hidden` for multple `dags`'
+        return loss
+
+    def train_shared(self, max_step=None, dag=None):
+        """Train the language model for 400 steps of minibatches of 64
+        examples.
+        Args:
+            max_step: Used to run extra training steps as a warm-up.
+            dag: If not None, is used instead of calling sample().
+        BPTT is truncated at 35 timesteps.
+        For each weight update, gradients are estimated by sampling M models
+        from the fixed controller policy, and averaging their gradients
+        computed on a batch of training data.
+        """
+        model = self.shared
+
+        if max_step is None:
+            max_step = self.args.shared_max_step
+        else:
+            max_step = min(self.args.shared_max_step, max_step)
+
+        raw_total_loss = 0
+        total_loss = 0
+        train_idx = 0
+        # TODO(brendan): Why - 1 - 1?
+        
+        # declare training data here
+        inputs = self.train_queue[0]
+        targets = self.train_queue[1]
+
+        for step in range(max_step):
+
+            with torch.no_grad():
+                dags = dag if dag else self.controller.sample(self.args.shared_num_sample)
+
+            loss = self.get_loss(inputs, targets, dags, mode='Train')
+            raw_total_loss += loss.data
+
+            # update
+            self.shared_optim.zero_grad()
+            loss.backward()
+
+            self.shared_optim.step()
+
+            # Add learning rate scheduler here instead
+
+            total_loss += loss.data
+
+            if ((step % self.args.log_step_shared) == 0) and (step > 0):
+                # Need to change summarize to include only loss rather than these
+                self._summarize_shared_train(total_loss, raw_total_loss)
+                raw_total_loss = 0
+                total_loss = 0
+
+
+    def get_reward(self, dag, entropies):
+        """Computes the perplexity of a single sampled model on a minibatch of
+        validation data.
+        """
+        if not isinstance(entropies, np.ndarray):
+            entropies = entropies.data.cpu().numpy()
+
+        # Declare validation data here
+
+        inputs = self.valid_queue[0]
+        target = self.valid_queue[1]
+
+        valid_ppl = self.get_loss(inputs, target, dag, mode='Valid')
+        valid_ppl = utils.to_item(valid_ppl.data)
+
+        # TODO: we don't know reward_c
+        if self.args.ppl_square:
+            # TODO: but we do know reward_c=80 in the previous paper
+            R = self.args.reward_c / valid_ppl ** 2
+        else:
+            R = self.args.reward_c / valid_ppl
+
+        if self.args.entropy_mode == 'reward':
+            rewards = R + self.args.entropy_coeff * entropies
+        elif self.args.entropy_mode == 'regularizer':
+            rewards = R * np.ones_like(entropies)
+        else:
+            raise NotImplementedError(f'Unkown entropy mode: {self.args.entropy_mode}')
+
+        return rewards
+
+    def train_controller(self):
+        """Fixes the shared parameters and updates the controller parameters.
+        The controller is updated with a score function gradient estimator
+        (i.e., REINFORCE), with the reward being c/valid_ppl, where valid_ppl
+        is computed on a minibatch of validation data.
+        A moving average baseline is used.
+        The controller is trained for 2000 steps per epoch (i.e.,
+        first (Train Shared) phase -> second (Train Controller) phase).
+        """
+        model = self.controller
+
+        avg_reward_base = None
+        baseline = None
+        adv_history = []
+        entropy_history = []
+        reward_history = []
+
+        total_loss = 0
+        for step in range(self.args.controller_max_step):
+            # sample models
+            dags, log_probs, entropies = self.controller.sample(
+                with_details=True)
+
+            # calculate reward
+            np_entropies = entropies.data.cpu().numpy()
+            with torch.no_grad():
+                rewards = self.get_reward(dags,np_entropies)
+
+            reward_history.extend(rewards)
+            entropy_history.extend(np_entropies)
+
+            # moving average baseline
+            if baseline is None:
+                baseline = rewards
+            else:
+                decay = self.args.ema_baseline_decay
+                baseline = decay * baseline + (1 - decay) * rewards
+
+            adv = rewards - baseline
+            adv_history.extend(adv)
+
+            # policy loss
+
+            loss = -log_probs*torch.tensor(adv)
+            if self.args.entropy_mode == 'regularizer':
+                loss -= self.args.entropy_coeff * entropies
+
+            loss = loss.sum()  # or loss.mean()
+
+            # update
+            self.controller_optim.zero_grad()
+            loss.backward()
+
+            if self.args.controller_grad_clip > 0:
+                torch.nn.utils.clip_grad_norm(model.parameters(),
+                                              self.args.controller_grad_clip)
+            self.controller_optim.step()
+
+            total_loss += utils.to_item(loss.data)
+
+            if ((step % self.args.log_step_controller) == 0) and (step > 0):
+                self._summarize_controller_train(total_loss,
+                                                 adv_history,
+                                                 entropy_history,
+                                                 reward_history,
+                                                 avg_reward_base,
+                                                 dags)
+
+                reward_history, adv_history, entropy_history = [], [], []
+                total_loss = 0
+
+
+    def evaluate(self, dag):
+        """Evaluate on the validation set.
+        NOTE(brendan): We should not be using the test set to develop the
+        algorithm (basic machine learning good practices).
+        """
+
+        with torch.no_grad():
+            total_loss = 0
+
+            inputs = self.test_queue[0]
+            targets = self.test_queue[1]
+            output = self.shared(inputs, dag[0])
+            total_loss = self.criterion_controller(output, targets).data
+            test_mae = utils.to_item(total_loss)
+            logger.info(f'dag = {dag}')
+            logger.info(f'eval | test mae: {test_mae:8.2f}')
+
+    def derive(self, sample_num=None):
+        """TODO(brendan): We are always deriving based on the very first batch
+        of validation data? This seems wrong...
+        """
+        if sample_num is None:
+            sample_num = self.args.derive_num_sample
+
+        dags, _, entropies = self.controller.sample(sample_num,
+                                                    with_details=True)
+
+        max_R = 0
+        best_dag = None
+        for dag in dags:
+            dag = [dag]
+            R = self.get_reward(dag, entropies)
+            if R.max() > max_R:
+                max_R = R.max()
+                best_dag = dag
+
+        logger.info(f'best dag = %s', best_dag)
+        logger.info(f'derive | max_R: {max_R:8.6f}')
+
+        return best_dag
+
+    @property
+    def controller_lr(self):
+        return self.args.controller_lr
+
+    @property
+    def shared_path(self):
+        return f'{self.args.model_dir}/shared_epoch{self.epoch}_step{self.shared_step}.pt'
+
+    @property
+    def controller_path(self):
+        return f'{self.args.model_dir}/controller_epoch{self.epoch}_step{self.controller_step}.pt'
+
+    def get_saved_models_info(self):
+        paths = glob.glob(os.path.join(self.args.model_dir, '*.pth'))
+        paths.sort()
+
+        def get_numbers(items, delimiter, idx, replace_word, must_contain=''):
+            return list(set([int(
+                    name.split(delimiter)[idx].replace(replace_word, ''))
+                    for name in basenames if must_contain in name]))
+
+        basenames = [os.path.basename(path.rsplit('.', 1)[0]) for path in paths]
+        epochs = get_numbers(basenames, '_', 1, 'epoch')
+        shared_steps = get_numbers(basenames, '_', 2, 'step', 'shared')
+        controller_steps = get_numbers(basenames, '_', 2, 'step', 'controller')
+
+        epochs.sort()
+        shared_steps.sort()
+        controller_steps.sort()
+
+        return epochs, shared_steps, controller_steps
+
+    def save_model(self):
+        torch.save(self.shared.state_dict(), self.shared_path)
+        logger.info(f'[*] SAVED: {self.shared_path}')
+
+        torch.save(self.controller.state_dict(), self.controller_path)
+        logger.info(f'[*] SAVED: {self.controller_path}')
+
+        epochs, shared_steps, controller_steps = self.get_saved_models_info()
+
+        for epoch in epochs[:-self.args.max_save_num]:
+            paths = glob.glob(
+                os.path.join(self.args.model_dir, f'*_epoch{epoch}_*.pt'))
+
+            for path in paths:
+                utils.remove_file(path)
+
+    def load_model(self):
+        epochs, shared_steps, controller_steps = self.get_saved_models_info()
+
+        if len(epochs) == 0:
+            logger.info(f'[!] No checkpoint found in {self.args.model_dir}...')
+            return
+
+        self.epoch = self.start_epoch = max(epochs)
+        self.shared_step = max(shared_steps)
+        self.controller_step = max(controller_steps)
+
+        if self.args.num_gpu == 0:
+            map_location = lambda storage, loc: storage
+        else:
+            map_location = None
+
+        self.shared.load_state_dict(
+            torch.load(self.shared_path, map_location=map_location))
+        logger.info(f'[*] LOADED: {self.shared_path}')
+
+        self.controller.load_state_dict(
+            torch.load(self.controller_path, map_location=map_location))
+        logger.info(f'[*] LOADED: {self.controller_path}')
+
+    def _summarize_controller_train(self,
+                                    total_loss,
+                                    adv_history,
+                                    entropy_history,
+                                    reward_history,
+                                    avg_reward_base,
+                                    dags):
+        """Logs the controller's progress for this training epoch."""
+        cur_loss = total_loss / self.args.log_step_controller
+
+        avg_adv = np.mean(adv_history)
+        avg_entropy = np.mean(entropy_history)
+        avg_reward = np.mean(reward_history)
+
+        if avg_reward_base is None:
+            avg_reward_base = avg_reward
+        logger.info(f'dag sampled = {dags}')
+        logger.info(
+            f'| epoch {self.epoch:3d} | lr {self.controller_lr:.5f} '
+            f'| R {avg_reward:.5f} | entropy {avg_entropy:.4f} '
+            f'| loss {cur_loss:.5f}')
+
+    def _summarize_shared_train(self, total_loss, raw_total_loss):
+        """Logs a set of training steps."""
+        cur_loss = utils.to_item(total_loss) / self.args.log_step_shared
+        # NOTE(brendan): The raw loss, without adding in the activation
+        # regularization terms, should be used to compute ppl.
+        cur_raw_loss = utils.to_item(raw_total_loss) / self.args.log_step_shared
+
+        logger.info(f'| epoch {self.epoch:3d} '
+                    f'| lr {self.args.shared_lr:.2f} '
+                    f'| raw loss {cur_raw_loss:.2f} '
+                    f'| loss {cur_loss:.2f} ')
