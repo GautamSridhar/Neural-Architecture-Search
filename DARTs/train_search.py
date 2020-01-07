@@ -11,6 +11,9 @@ import torch.nn as nn
 import torch.utils
 import torch.nn.functional as F
 
+from torchdiffeq import odeint_adjoint as odeint
+from dataset_def import generate_data,  get_batch, LotkaVolterra, FHN
+
 import matplotlib.pyplot as plt
 
 from scipy import integrate
@@ -19,6 +22,10 @@ from architect import Architect
 
 
 parser = argparse.ArgumentParser("Regression Search")
+parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+parser.add_argument('--batch_size', type=int, default=50, help='batch size of data')
+parser.add_argument('--batch_time', type=int, default=25, help='batch time of data')
+parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
 parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
 parser.add_argument('--learning_rate_min', type=float, default=0.001, help='min learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
@@ -29,7 +36,7 @@ parser.add_argument('--network_outputsize', type=int, default=2, help='output si
 parser.add_argument('--max_width', type=int, default=16, help='max width of the network')
 parser.add_argument('--max_depth', type=int, default=4, help='total number of layers in the network')
 parser.add_argument('--model_path', type=str, default='saved_models', help='path to save the model')
-parser.add_argument('--save', type=str, default='test-sched-highlr-seed1-unrf', help='experiment name')
+parser.add_argument('--save', type=str, default='test-nnode', help='experiment name')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
 parser.add_argument('--arch_learning_rate', type=float, default=1e-2, help='learning rate for arch encoding')
@@ -48,41 +55,45 @@ fh.setFormatter(logging.Formatter(log_format))
 logging.getLogger().addHandler(fh)
 
 # Data #############################
-
-a = 1.
-b = 0.1
-c = 1.5
-d = 0.75
-
-def dX_dt(X, t=0):
-    p = np.array([ a*X[0] -   b*X[0]*X[1] ,
-                  -c*X[1] + d*b*X[0]*X[1] ])
-    return p  
+if args.dataset == 'LV':
+    datfunc = LotkaVolterra()
+elif args.dataset == 'FHN':
+    datfunc = FHN()
 
 t_train = torch.linspace(0.,25.,1000)
 t_eval = torch.linspace(0.,100.,1000)
 t_test = torch.linspace(0,200,1000)
 X0 = torch.tensor([10.,5.])
-X_train = integrate.odeint(dX_dt, X0.numpy(), t_train.numpy())
-X_eval = integrate.odeint(dX_dt,X0.numpy(),t_eval.numpy())
-X_test = integrate.odeint(dX_dt, X0.numpy(),t_test.numpy())
 
-dx_dt_train = dX_dt(X_train.T)
-dx_dt_eval = dX_dt(X_eval.T)
-dx_dt_test = dX_dt(X_test.T)
+X_train = generate_data(X0, t_train, method=args.integrate_method, typ=args.dataset)
+X_eval = generate_data(X0, t_eval, method=args.integrate_method, typ=args.dataset)
+X_test = generate_data(X0, t_test, method=args.integrate_method, typ=args.dataset)
 
-noisy_dxdt = dx_dt_train #+ 0.75*np.random.randn(X.shape[1],X.shape[0])
+dx_dt_train = datfunc(t=None,x=X_train.numpy().T)
+dx_dt_eval = datfunc(t=None,x=X_eval.numpy().T)
+dx_dt_test = datfunc(t=None,x=X_test.numpy().T)
 
-x_train = torch.from_numpy(X_train).float()
-y_train = torch.from_numpy(noisy_dxdt.T).float()
-train_queue = (x_train,y_train)
+# Xtrain_noisy = X_train + 0.75*torch.randn(X_train.shape[0],X_train.shape[1])
 
-x_eval = torch.from_numpy(X_eval).float()
-y_eval = torch.from_numpy(dx_dt_eval.T).float()
-valid_queue = (x_eval,y_eval)
+# Xtrain_smooth = np.zeros((true_y_train_node.shape[0],true_y_train_node.shape[1]))
 
-x_test = torch.from_numpy(X_test).float()
+# xhat0 = scipy.signal.savgol_filter(Xtrain_noisy.numpy()[:,0], 45, 2) # window size 45, polynomial order 2
+# xhat1 = scipy.signal.savgol_filter(Xtrain_noisy.numpy()[:,1], 45, 2) # window size 45, polynomial order 2
 
+# Xtrain_smooth[:,0] = xhat0
+# Xtrain_smooth[:,1] = xhat1
+
+# torched_Xtrain_smooth = torch.from_numpy(Xtrain_smooth)
+
+# dx_dt_train_regress = np.gradient(Xtrain_smooth, t_train, axis=0)
+
+# torched_X_train = torch.from_numpy(Xtrain_smooth)
+# torched_der_train_regress = torch.from_numpy(der_train_regress)
+
+
+train_queue = (X_train,dx_dt_train.T)
+
+valid_queue = (X_eval,dx_dt_eval.T)
 
 fig,ax = plt.subplots(figsize=(20,20))
 def main():
@@ -100,18 +111,22 @@ def main():
     model = Network(args.network_inputsize, args.network_outputsize, args.max_width, args.max_depth, criterion)
     # model = model.cuda()
 
-    optimizer = torch.optim.Adam(
-                                model.parameters(),
-                                args.learning_rate,
-                                #momentum=args.momentum,
-                                weight_decay=args.weight_decay
-                                )
+    # optimizer = torch.optim.Adam(
+    #                             model.parameters(),
+    #                             args.learning_rate,
+    #                             #momentum=args.momentum,
+    #                             weight_decay=args.weight_decay
+    #                             )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                                                           optimizer,
-                                                           float(args.epochs),
-                                                           eta_min=args.learning_rate_min
-                                                           )
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #                                                        optimizer,
+    #                                                        float(args.epochs),
+    #                                                        eta_min=args.learning_rate_min
+    #                                                        )
+
+    optimizer = torch.optim.RMSprop(model.parameters(),lr=1e-4, weight_decay=args.weight_decay)
+
+    scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=1e-4, max_lr=4e-3, step_size_up = 150, mode='triangular')
 
     architect = Architect(model, args)
 
@@ -149,23 +164,36 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
     objs = utils.AverageMeter()
     mae = utils.AverageMeter()
 
+    # Declare batches and randomly sample batches.
+    batch_x0, batch_t, batch_x, batch_der = get_batch(1000, args.batch_time, args.batch_size,
+                                                      train_queue[0], train_queue[1], t_train)
+
     n = train_queue[0].shape[0]
 
     architect.step(train_queue[0], train_queue[1], valid_queue[0], valid_queue[1], lr, optimizer, unrolled=args.unrolled)
 
     optimizer.zero_grad()
-    logits = model(train_queue[0])
-    loss = criterion(logits, train_queue[1])
+    batch_regress = batch_x.view(args.batch_size, args.batch_time, -1)
+    batch_der = batch_der.view(args.batch_size, args.batch_time, -1)
 
-    loss.backward()
+    regress_pred = model(t=None, x=batch_regress.float())
+    loss_regress = criterion(regress_pred, batch_der.float())
+
+    pred_x = odeint(model, batch_x0.float(), batch_t.float(),method=args.integrate_method)
+    loss_node = criterion(pred_x.float(),batch_x.float())
+
+    loss_total = loss_regress + loss_node
+    logits = model(t=None, x=train_queue[0])
+
+    loss_total.backward()
     optimizer.step()
 
     train_mae = utils.accuracy(logits, train_queue[1])
-    objs.update(loss.data.numpy(), n)
+    objs.update(loss_total.data.numpy(), n)
     mae.update(train_mae.data.numpy(), n)
 
     if step % args.report_freq == 0:
-        logging.info('train %03d %e %f', step, objs.avg, mae.avg)
+        logging.info('train %03d loss %e mae %f', step, objs.avg, mae.avg)
 
     return mae.avg, objs.avg
 
@@ -176,10 +204,10 @@ def infer(valid_queue, model, criterion, step):
 
     with torch.no_grad():
 
-        logits = model(valid_queue[0])
+        logits = model(t=None, x=valid_queue[0])
         loss = criterion(logits, valid_queue[1])
 
-        logits_test = model(x_test)
+        logits_test = model(t=None, x=X_test)
 
         val_mae = utils.accuracy(logits, valid_queue[1])
         n = valid_queue[0].shape[0]

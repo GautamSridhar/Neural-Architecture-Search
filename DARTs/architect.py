@@ -2,6 +2,7 @@ import copy
 import numpy as np
 import torch
 import torch.nn as nn
+from torchdiffeq import odeint_adjoint as odeint
 
 def _concat(xs):
     return torch.cat([x.view(-1) for x in xs])
@@ -10,6 +11,7 @@ class Architect():
 
 
     def __init__(self, model, args):
+        self.args = args
         self.network_momentum = args.momentum
         self.network_weight_decay = args.weight_decay
         self.model = model

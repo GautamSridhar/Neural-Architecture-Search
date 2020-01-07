@@ -27,8 +27,8 @@ class Node(nn.Module):
         weighted_sum = 0 
         for w, op in zip(weights, self._ops):
             output = op(x)
-            if output.shape[1] != self._max_width:
-                pd = (0,self._max_width - output.shape[1])
+            if output.shape[-1] != self._max_width:
+                pd = (0,self._max_width - output.shape[-1])
                 output = F.pad(output,pd,'constant')
             weighted_sum += w*output
 
@@ -61,7 +61,7 @@ class Network(nn.Module):
         self._initialize_alphas()
 
 
-    def forward(self, x):
+    def forward(self, t, x):
         weights = F.softmax(self.w_alpha, dim=-1)
 
         h = x
@@ -88,7 +88,7 @@ class Network(nn.Module):
 
 
     def _loss(self, input, target):
-        logits = self(input)
+        logits = self(t=None, x=input)
         return self._criterion(logits, target) 
 
 
