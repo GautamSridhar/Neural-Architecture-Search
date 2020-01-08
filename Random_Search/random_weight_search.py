@@ -74,10 +74,8 @@ class Random_NAS:
             n_rounds = rounds
         best_rounds = []
         for r in range(n_rounds):
-            print(r)
             sample_vals = []
             for _ in range(1000):
-                time.sleep(2)
                 arch = self.model.sample_arch()
                 try:
                     s = 50
@@ -97,29 +95,27 @@ def main(args):
     # Fill in with root output path
     root_dir = '/home/gautam/Documents/Gaussian_Processes/NAS/Neural-Architecture-Search/Random_Search/Results/'
     if args.save_dir is None:
-        save_dir = os.path.join(root_dir, 'random/trial%d' % (args.seed))
-    else:
-        save_dir = args.save_dir
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+        args.save_dir = os.path.join(root_dir, 'random/trial%d' % (args.seed))
+
+    if not os.path.exists(args.save_dir):
+        os.makedirs(args.save_dir)
+
     if args.eval_only:
         assert args.save_dir is not None
 
     log_format = '%(asctime)s %(message)s'
     logging.basicConfig(stream=sys.stdout, level=logging.INFO,
         format=log_format, datefmt='%m/%d %I:%M:%S %p')
-    fh = logging.FileHandler(os.path.join(save_dir, 'log.txt'))
+    fh = logging.FileHandler(os.path.join(args.save_dir, 'log.txt'))
     fh.setFormatter(logging.Formatter(log_format))
     logging.getLogger().addHandler(fh)
 
     logging.info(args)
 
     B = int(args.epochs)
-    model = DartsWrapper(save_dir, args.seed, args.epochs, args.network_inputsize,
-                         args.network_outputsize, args.max_width, args.max_depth
-                        )
+    model = DartsWrapper(args)
 
-    searcher = Random_NAS(B, model, args.seed, save_dir)
+    searcher = Random_NAS(B, model, args.seed, args.save_dir)
     logging.info('budget: %d' % (searcher.B))
     if not args.eval_only:
         searcher.run()
@@ -127,10 +123,11 @@ def main(args):
         archs = searcher.get_eval_arch()
         plt.ioff()
         plt.show()
-        self.save()
+
     else:
         np.random.seed(args.seed+1)
         archs = searcher.get_eval_arch(2)
+    logging.info('best architecture')
     logging.info(archs)
     arch = ' '.join([str(a) for a in archs[0][0]])
     with open('/tmp/arch','w') as f:
@@ -141,13 +138,18 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Args for SHA with weight sharing')
     parser.add_argument('--seed', dest='seed', type=int, default=1)
-    parser.add_argument('--epochs', dest='epochs', type=int, default=10)
+    parser.add_argument('--epochs', dest='epochs', type=int, default=100)
     parser.add_argument('--save_dir', dest='save_dir', type=str, default=None)
     parser.add_argument('--eval_only', dest='eval_only', type=int, default=0)
     parser.add_argument('--network_inputsize', type=int, default=2, help='input size of the network')
     parser.add_argument('--network_outputsize', type=int, default=2, help='output size of the network')
     parser.add_argument('--max_width', type=int, default=8, help='max width of the network')
     parser.add_argument('--max_depth', type=int, default=2, help='total number of layers in the network')
+    parser.add_argument('--learning_rate', type=float, default=0.025, help='learning rate')
+    parser.add_argument('--learning_rate_min', type=float, default=0.001, help='min lr for scheduler')
+    parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
+    parser.add_argument('--momentume', type=float, default=0.9, help='momentum')
+    parser.add_argument('--report_freq', type=int, default=50, help='when to check performance on test set.')
     args = parser.parse_args()
 
     main(args)

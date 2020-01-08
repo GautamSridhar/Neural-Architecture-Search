@@ -23,25 +23,8 @@ class AttrDict(dict):
         self.__dict__ = self
 
 class DartsWrapper:
-    def __init__(self, save_path, seed, epochs, network_inputsize, network_outputsize,max_width, max_depth):
-        args = {}
-        args['epochs'] = epochs
-        args['learning_rate'] = 0.025
-        args['learning_rate_min'] = 0.001
-        args['momentum'] = 0.9
-        args['weight_decay'] = 3e-4
-        args['network_inputsize'] = network_inputsize
-        args['network_outputsize'] = network_outputsize
-        args['max_width'] = max_width
-        args['max_depth'] = max_depth
-        args['seed'] = seed
-        args['save'] = save_path
-        args['gpu'] = 0
-        args['cuda'] = False
-        args['report_freq'] = 50
-        args = AttrDict(args)
+    def __init__(self, args):
         self.args = args
-        self.seed = seed
 
         np.random.seed(args.seed)
         random.seed(args.seed)
@@ -174,10 +157,10 @@ class DartsWrapper:
         return mae.avg
 
     def save(self):
-        utils.save(self.model, os.path.join(self.args.save, 'weights.pt'))
+        utils.save(self.model, os.path.join(self.args.save_dir, 'weights.pt'))
 
     def load(self):
-        utils.load(self.model, os.path.join(self.args.save, 'weights.pt'))
+        utils.load(self.model, os.path.join(self.args.save_dir, 'weights.pt'))
 
     def get_weights_from_arch(self, arch):
         num_ops = len(genotypes.PRIMITIVES)
