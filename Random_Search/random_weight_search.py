@@ -1,6 +1,6 @@
 import sys
-sys.path.append('/home/liamli4465/nas_weight_share')
 import os
+import time
 import shutil
 import logging
 import inspect
@@ -11,7 +11,6 @@ import numpy as np
 from darts_wrapper import DartsWrapper
 import matplotlib.pyplot as plt
 
-fig,ax = plt.subplots(figsize=(20,20))
 
 class Node:
     def __init__(self, parent, arch, node_id, rung):
@@ -54,6 +53,7 @@ class Random_NAS:
         self.model.save()
 
     def run(self):
+        fig,ax = plt.subplots(figsize=(20,20))
         plt.ion()
         while self.iters < self.B:
             arch = self.get_arch()
@@ -61,13 +61,12 @@ class Random_NAS:
             self.iters += 1
             if self.iters % 500 == 0:
                 self.save()
-            plt.draw()
-            plt.pause(0.1)
         plt.ioff()
         plt.show()
         self.save()
 
     def get_eval_arch(self, rounds=None):
+        fig,ax = plt.subplots(figsize=(20,20))
         #n_rounds = int(self.B / 7 / 1000)
         if rounds is None:
             n_rounds = max(1,int(self.B/10000))
@@ -75,8 +74,10 @@ class Random_NAS:
             n_rounds = rounds
         best_rounds = []
         for r in range(n_rounds):
+            print(r)
             sample_vals = []
             for _ in range(1000):
+                time.sleep(2)
                 arch = self.model.sample_arch()
                 try:
                     s = 50
@@ -90,7 +91,6 @@ class Random_NAS:
             sample_vals = sorted(sample_vals, key=lambda x:x[1], reverse=False)
 
             best_rounds.append(sample_vals[0])
-        print(sample_vals[0:20])
         return best_rounds
 
 def main(args):
@@ -123,7 +123,11 @@ def main(args):
     logging.info('budget: %d' % (searcher.B))
     if not args.eval_only:
         searcher.run()
+        plt.ion()
         archs = searcher.get_eval_arch()
+        plt.ioff()
+        plt.show()
+        self.save()
     else:
         np.random.seed(args.seed+1)
         archs = searcher.get_eval_arch(2)
@@ -137,7 +141,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Args for SHA with weight sharing')
     parser.add_argument('--seed', dest='seed', type=int, default=1)
-    parser.add_argument('--epochs', dest='epochs', type=int, default=500)
+    parser.add_argument('--epochs', dest='epochs', type=int, default=10)
     parser.add_argument('--save_dir', dest='save_dir', type=str, default=None)
     parser.add_argument('--eval_only', dest='eval_only', type=int, default=0)
     parser.add_argument('--network_inputsize', type=int, default=2, help='input size of the network')

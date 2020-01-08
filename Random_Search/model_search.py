@@ -96,7 +96,7 @@ class Network(nn.Module):
         return self._arch_parameters
 
 
-    def genotype(self):
+    def genotype(self, weights):
 
         def _parse(weights):
             k_best = None
@@ -108,7 +108,7 @@ class Network(nn.Module):
                 gene.append((PRIMITIVES[k_best], i))
             return gene
 
-        gene_normal = _parse(F.softmax(self.w_alpha, dim=-1).data.cpu().numpy())
+        gene_normal = _parse(F.softmax(weights[0], dim=-1).data.cpu().numpy())
 
         genotype = Genotype(gene=gene_normal)
         return genotype

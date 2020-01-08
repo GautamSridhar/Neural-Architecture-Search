@@ -141,6 +141,7 @@ class DartsWrapper:
 
         weights = self.get_weights_from_arch(arch)
         self.set_model_weights(weights)
+        logging.info(self.model.genotype(weights))
 
         with torch.no_grad():
                 t_test = torch.linspace(0,200,1000)
@@ -167,6 +168,8 @@ class DartsWrapper:
                     # ax[0,1].plot(t_train.numpy(),pred_y_train.numpy(), 'b-',label='Learned',)
                     # ax[0,1].legend()
                     # ax[0,1].set_title("Regression integrated")
+        plt.draw()
+        plt.pause(0.1)
 
         return mae.avg
 
