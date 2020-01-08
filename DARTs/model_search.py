@@ -62,7 +62,7 @@ class Network(nn.Module):
 
 
     def forward(self, t, x):
-        weights = F.softmax(self.w_alpha, dim=-1)
+        weights = F.softmax(self._arch_parameters[0], dim=-1)
 
         h = x
         for i in range(len(self._ops)):
