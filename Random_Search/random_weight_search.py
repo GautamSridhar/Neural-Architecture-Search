@@ -87,9 +87,10 @@ class Random_NAS:
                 logging.info('objective_val: %.3f' % ppl)
                 sample_vals.append((arch, ppl))
 
-            sample_vals = sorted(sample_vals, key=lambda x:x[1], reverse=True)
+            sample_vals = sorted(sample_vals, key=lambda x:x[1], reverse=False)
 
             best_rounds.append(sample_vals[0])
+        print(sample_vals[0:20])
         return best_rounds
 
 def main(args):
@@ -141,8 +142,8 @@ if __name__ == "__main__":
     parser.add_argument('--eval_only', dest='eval_only', type=int, default=0)
     parser.add_argument('--network_inputsize', type=int, default=2, help='input size of the network')
     parser.add_argument('--network_outputsize', type=int, default=2, help='output size of the network')
-    parser.add_argument('--max_width', type=int, default=16, help='max width of the network')
-    parser.add_argument('--max_depth', type=int, default=4, help='total number of layers in the network')
+    parser.add_argument('--max_width', type=int, default=8, help='max width of the network')
+    parser.add_argument('--max_depth', type=int, default=2, help='total number of layers in the network')
     args = parser.parse_args()
 
     main(args)
