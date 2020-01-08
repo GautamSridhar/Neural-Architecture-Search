@@ -142,7 +142,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_time', type=int, default=25, help='batch time of data')
     parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
     parser.add_argument('--seed', dest='seed', type=int, default=1)
-    parser.add_argument('--epochs', dest='epochs', type=int, default=100)
+    parser.add_argument('--epochs', dest='epochs', type=int, default=50)
     parser.add_argument('--save_dir', dest='save_dir', type=str, default=None)
     parser.add_argument('--eval_only', dest='eval_only', type=int, default=0)
     parser.add_argument('--network_inputsize', type=int, default=2, help='input size of the network')

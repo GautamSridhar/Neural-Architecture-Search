@@ -42,14 +42,14 @@ class DartsWrapper:
         elif args.dataset == 'FHN':
             datfunc = FHN()
 
-        t_train = torch.linspace(0.,25.,1000)
-        t_eval = torch.linspace(0.,100.,1000)
-        t_test = torch.linspace(0,200,1000)
+        self.t_train = torch.linspace(0.,25.,1000)
+        self.t_eval = torch.linspace(0.,100.,1000)
+        self.t_test = torch.linspace(0,200,1000)
         X0 = torch.tensor([10.,5.])
 
-        X_train = generate_data(X0, t_train, method=args.integrate_method, typ=args.dataset)
-        X_eval = generate_data(X0, t_eval, method=args.integrate_method, typ=args.dataset)
-        X_test = generate_data(X0, t_test, method=args.integrate_method, typ=args.dataset)
+        X_train = generate_data(X0, self.t_train, method=args.integrate_method, typ=args.dataset)
+        X_eval = generate_data(X0, self.t_eval, method=args.integrate_method, typ=args.dataset)
+        X_test = generate_data(X0, self.t_test, method=args.integrate_method, typ=args.dataset)
 
         dx_dt_train = datfunc(t=None,x=X_train.numpy().T)
         dx_dt_eval = datfunc(t=None,x=X_eval.numpy().T)
@@ -104,20 +104,37 @@ class DartsWrapper:
         self.mae = utils.AverageMeter()
         lr = self.scheduler.get_lr()[0]
 
+        # Declare batches and randomly sample batches.
+        batch_x0, batch_t, batch_x, batch_der = get_batch(1000, args.batch_time, args.batch_size,
+                                                          self.train_queue[0], self.train_queue[1], self.t_train)
+
         weights = self.get_weights_from_arch(arch)
         self.set_model_weights(weights)
 
         n = self.train_queue[0].shape[0]
 
         self.optimizer.zero_grad()
-        logits = self.model(self.train_queue[0])
-        loss = self.criterion(logits, self.train_queue[1])
 
-        loss.backward()
+        batch_regress = batch_x.view(args.batch_size, args.batch_time, -1)
+        batch_der = batch_der.view(args.batch_size, args.batch_time, -1)
+
+        regress_pred = self.model(t=None, x=batch_regress.float())
+        loss_regress = self.criterion(regress_pred, batch_der.float())
+
+        pred_x = odeint(self.model, batch_x0.float(), batch_t.float(),method=args.integrate_method)
+        loss_node = self.criterion(pred_x.float(),batch_x.float())
+
+        # logits = self.model(self.train_queue[0])
+        # loss = self.criterion(logits, self.train_queue[1])
+
+        # loss.backward()
+
+        loss_total = loss_regress + loss_node
+        logits = self.model(t=None, x=self.train_queue[0])
         self.optimizer.step()
 
         train_mae = utils.accuracy(logits, self.train_queue[1])
-        self.objs.update(loss.data.numpy(), n)
+        self.objs.update(loss_total.data.numpy(), n)
         self.mae.update(train_mae.data.numpy(), n)
 
         valid_err = self.evaluate(arch, step, ax)
@@ -139,10 +156,10 @@ class DartsWrapper:
 
         with torch.no_grad():
                 t_test = torch.linspace(0,200,1000)
-                logits = self.model(self.valid_queue[0])
+                logits = self.model(t=None, x=self.valid_queue[0])
                 loss = self.criterion(logits, self.valid_queue[1])
 
-                logits_test = self.model(self.test_queue[0])
+                logits_test = self.model(t=None,x=self.test_queue[0])
 
                 val_mae = utils.accuracy(logits, self.valid_queue[1])
                 n = self.valid_queue[0].shape[0]
