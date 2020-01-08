@@ -137,6 +137,10 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Args for SHA with weight sharing')
+    parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+    parser.add_argument('--batch_size', type=int, default=50, help='batch size of data')
+    parser.add_argument('--batch_time', type=int, default=25, help='batch time of data')
+    parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
     parser.add_argument('--seed', dest='seed', type=int, default=1)
     parser.add_argument('--epochs', dest='epochs', type=int, default=100)
     parser.add_argument('--save_dir', dest='save_dir', type=str, default=None)
