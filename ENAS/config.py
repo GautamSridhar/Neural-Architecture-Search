@@ -74,7 +74,7 @@ learn_arg.add_argument('--shared_max_step', type=int, default=100,
 learn_arg.add_argument('--shared_num_sample', type=int, default=1,
                        help='# of Monte Carlo samples')
 learn_arg.add_argument('--shared_optim', type=str, default='adam')
-learn_arg.add_argument('--shared_lr', type=float, default=0.0001)
+learn_arg.add_argument('--shared_lr', type=float, default=0.01)
 learn_arg.add_argument('--shared_l2_reg', type=float, default=1e-7)
 
 learn_arg.add_argument('--derive_num_sample', type=int, default=10)
@@ -82,6 +82,10 @@ learn_arg.add_argument('--derive_num_sample', type=int, default=10)
 
 # Misc
 misc_arg = add_argument_group('Misc')
+misc_arg.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+misc_arg.add_argument('--batch_size', type=int, default=50, help='batch size of data')
+misc_arg.add_argument('--batch_time', type=int, default=25, help='batch time of data')
+misc_arg.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
 misc_arg.add_argument('--load_path', type=str, default='')
 misc_arg.add_argument('--log_step_shared', type=int, default=5)
 misc_arg.add_argument('--log_step_controller', type=int, default=50)

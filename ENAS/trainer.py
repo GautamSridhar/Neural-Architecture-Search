@@ -15,6 +15,9 @@ import utils
 
 import time
 
+from torchdiffeq import odeint_adjoint as odeint
+from dataset_def import generate_data,  get_batch, LotkaVolterra, FHN
+
 logger = utils.get_logger()
 
 def _get_optimizer(name):
@@ -48,41 +51,83 @@ class Trainer(object):
 
         # Data #############################
 
-        a = 1.
-        b = 0.1
-        c = 1.5
-        d = 0.75
+        # a = 1.
+        # b = 0.1
+        # c = 1.5
+        # d = 0.75
 
-        def dX_dt(X, t=0):
-            p = np.array([ a*X[0] -   b*X[0]*X[1] ,
-                          -c*X[1] + d*b*X[0]*X[1] ])
-            return p  
+        # def dX_dt(X, t=0):
+        #     p = np.array([ a*X[0] -   b*X[0]*X[1] ,
+        #                   -c*X[1] + d*b*X[0]*X[1] ])
+        #     return p  
 
-        t_train = torch.linspace(0.,25.,1000)
-        t_eval = torch.linspace(0.,100.,1000)
-        t_test = torch.linspace(0,200,1000)
+        # t_train = torch.linspace(0.,25.,1000)
+        # t_eval = torch.linspace(0.,100.,1000)
+        # t_test = torch.linspace(0,200,1000)
+        # X0 = torch.tensor([10.,5.])
+        # X_train = integrate.odeint(dX_dt, X0.numpy(), t_train.numpy())
+        # X_eval = integrate.odeint(dX_dt,X0.numpy(),t_eval.numpy())
+        # X_test = integrate.odeint(dX_dt, X0.numpy(),t_test.numpy())
+
+        # dx_dt_train = dX_dt(X_train.T)
+        # dx_dt_eval = dX_dt(X_eval.T)
+        # dx_dt_test = dX_dt(X_test.T)
+
+        # noisy_dxdt = dx_dt_train #+ 0.75*np.random.randn(X.shape[1],X.shape[0])
+
+        # x_train = torch.from_numpy(X_train).float()
+        # y_train = torch.from_numpy(noisy_dxdt.T).float()
+        # self.train_queue = (x_train,y_train)
+
+        # x_eval = torch.from_numpy(X_eval).float()
+        # y_eval = torch.from_numpy(dx_dt_eval.T).float()
+        # self.valid_queue = (x_eval,y_eval)
+
+        # x_test = torch.from_numpy(X_test).float()
+        # y_test = torch.from_numpy(dx_dt_test.T).float()
+        # self.test_queue = (x_test, y_test)
+
+        if args.dataset == 'LV':
+            datfunc = LotkaVolterra()
+        elif args.dataset == 'FHN':
+            datfunc = FHN()
+
+        self.t_train = torch.linspace(0.,25.,1000)
+        self.t_eval = torch.linspace(0.,100.,1000)
+        self.t_test = torch.linspace(0,200,1000)
         X0 = torch.tensor([10.,5.])
-        X_train = integrate.odeint(dX_dt, X0.numpy(), t_train.numpy())
-        X_eval = integrate.odeint(dX_dt,X0.numpy(),t_eval.numpy())
-        X_test = integrate.odeint(dX_dt, X0.numpy(),t_test.numpy())
 
-        dx_dt_train = dX_dt(X_train.T)
-        dx_dt_eval = dX_dt(X_eval.T)
-        dx_dt_test = dX_dt(X_test.T)
+        X_train = generate_data(X0, self.t_train, method=args.integrate_method, typ=args.dataset)
+        X_eval = generate_data(X0, self.t_eval, method=args.integrate_method, typ=args.dataset)
+        X_test = generate_data(X0, self.t_test, method=args.integrate_method, typ=args.dataset)
 
-        noisy_dxdt = dx_dt_train #+ 0.75*np.random.randn(X.shape[1],X.shape[0])
+        dx_dt_train = datfunc(t=None,x=X_train.numpy().T)
+        dx_dt_eval = datfunc(t=None,x=X_eval.numpy().T)
+        dx_dt_test = datfunc(t=None,x=X_test.numpy().T)
 
-        x_train = torch.from_numpy(X_train).float()
-        y_train = torch.from_numpy(noisy_dxdt.T).float()
-        self.train_queue = (x_train,y_train)
+        # Xtrain_noisy = X_train + 0.75*torch.randn(X_train.shape[0],X_train.shape[1])
 
-        x_eval = torch.from_numpy(X_eval).float()
-        y_eval = torch.from_numpy(dx_dt_eval.T).float()
-        self.valid_queue = (x_eval,y_eval)
+        # Xtrain_smooth = np.zeros((true_y_train_node.shape[0],true_y_train_node.shape[1]))
 
-        x_test = torch.from_numpy(X_test).float()
-        y_test = torch.from_numpy(dx_dt_test.T).float()
-        self.test_queue = (x_test, y_test)
+        # xhat0 = scipy.signal.savgol_filter(Xtrain_noisy.numpy()[:,0], 45, 2) # window size 45, polynomial order 2
+        # xhat1 = scipy.signal.savgol_filter(Xtrain_noisy.numpy()[:,1], 45, 2) # window size 45, polynomial order 2
+
+        # Xtrain_smooth[:,0] = xhat0
+        # Xtrain_smooth[:,1] = xhat1
+
+        # torched_Xtrain_smooth = torch.from_numpy(Xtrain_smooth)
+
+        # dx_dt_train_regress = np.gradient(Xtrain_smooth, t_train, axis=0)
+
+        # torched_X_train = torch.from_numpy(Xtrain_smooth)
+        # torched_der_train_regress = torch.from_numpy(der_train_regress)
+
+
+        self.train_queue = (X_train,dx_dt_train.T)
+
+        self.valid_queue = (X_eval,dx_dt_eval.T)
+
+        self.test_queue = (X_test, dx_dt_test.T)
 
         self.build_model()
 
