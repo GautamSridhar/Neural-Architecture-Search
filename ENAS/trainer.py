@@ -50,43 +50,6 @@ class Trainer(object):
         self.start_epoch = 0
 
         # Data #############################
-
-        # a = 1.
-        # b = 0.1
-        # c = 1.5
-        # d = 0.75
-
-        # def dX_dt(X, t=0):
-        #     p = np.array([ a*X[0] -   b*X[0]*X[1] ,
-        #                   -c*X[1] + d*b*X[0]*X[1] ])
-        #     return p  
-
-        # t_train = torch.linspace(0.,25.,1000)
-        # t_eval = torch.linspace(0.,100.,1000)
-        # t_test = torch.linspace(0,200,1000)
-        # X0 = torch.tensor([10.,5.])
-        # X_train = integrate.odeint(dX_dt, X0.numpy(), t_train.numpy())
-        # X_eval = integrate.odeint(dX_dt,X0.numpy(),t_eval.numpy())
-        # X_test = integrate.odeint(dX_dt, X0.numpy(),t_test.numpy())
-
-        # dx_dt_train = dX_dt(X_train.T)
-        # dx_dt_eval = dX_dt(X_eval.T)
-        # dx_dt_test = dX_dt(X_test.T)
-
-        # noisy_dxdt = dx_dt_train #+ 0.75*np.random.randn(X.shape[1],X.shape[0])
-
-        # x_train = torch.from_numpy(X_train).float()
-        # y_train = torch.from_numpy(noisy_dxdt.T).float()
-        # self.train_queue = (x_train,y_train)
-
-        # x_eval = torch.from_numpy(X_eval).float()
-        # y_eval = torch.from_numpy(dx_dt_eval.T).float()
-        # self.valid_queue = (x_eval,y_eval)
-
-        # x_test = torch.from_numpy(X_test).float()
-        # y_test = torch.from_numpy(dx_dt_test.T).float()
-        # self.test_queue = (x_test, y_test)
-
         if args.dataset == 'LV':
             datfunc = LotkaVolterra()
         elif args.dataset == 'FHN':
@@ -212,18 +175,36 @@ class Trainer(object):
 
         loss = 0
         if mode == 'Train':
+            batch_x0, batch_t, batch_x, batch_der = get_batch(1000, self.args.batch_time, self.args.batch_size,
+                                                              inputs, targets, self.t_train)
+            batch_regress = batch_x.view(self.args.batch_size, self.args.batch_time, -1)
+            batch_der = batch_der.view(self.args.batch_size, self.args.batch_time, -1)
+
             for dag in dags:
-                output = self.shared(inputs, dag)
+                self.shared.dag = dag
+                regress_pred = self.shared(t=None, inputs=batch_regress.float())
+                loss_regress = self.criterion_shared(regress_pred, batch_der.float())
+
+                pred_x = odeint(self.shared, batch_x0.float(), batch_t.float(),method=self.args.integrate_method)
+                loss_node = self.criterion_shared(pred_x.float(),batch_x.float())
+
+                loss_total = loss_regress + loss_node
+
+                output = self.shared(t=None, inputs=inputs)
                 sample_loss = self.criterion_shared(output, targets)
                 loss += sample_loss
+
+                return loss_total, loss
+
         elif mode == 'Valid':
             for dag in dags:
-                output = self.shared(inputs, dag)
+                self.shared.dag = dag
+                output = self.shared(t=None, inputs=inputs)
                 sample_loss = self.criterion_controller(output, targets)
                 loss += sample_loss
+                return loss
 
         assert len(dags) == 1, 'there are multiple `hidden` for multple `dags`'
-        return loss
 
     def train_shared(self, max_step=None, dag=None):
         """Train the language model for 400 steps of minibatches of 64
@@ -257,12 +238,12 @@ class Trainer(object):
             with torch.no_grad():
                 dags = dag if dag else self.controller.sample(self.args.shared_num_sample)
 
-            loss = self.get_loss(inputs, targets, dags, mode='Train')
+            loss_total, loss = self.get_loss(inputs, targets, dags, mode='Train')
             raw_total_loss += loss.data
 
             # update
             self.shared_optim.zero_grad()
-            loss.backward()
+            loss_total.backward()
 
             self.shared_optim.step()
 
@@ -391,7 +372,8 @@ class Trainer(object):
 
             inputs = self.test_queue[0]
             targets = self.test_queue[1]
-            output = self.shared(inputs, dag[0])
+            self.shared.dag = dag[0]
+            output = self.shared(t=None, inputs=inputs)
             total_loss = self.criterion_controller(output, targets).data
             test_mae = utils.to_item(total_loss)
             logger.info(f'dag = {dag}')

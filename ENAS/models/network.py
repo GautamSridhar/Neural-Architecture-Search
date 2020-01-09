@@ -27,8 +27,8 @@ class Node(nn.Module):
 
     def forward(self, x, dag_node):
         output = self._ops[PRIMITIVES.index(dag_node.name_op)](x)
-        if output.shape[1] != self._max_width:
-            pd = (0,self._max_width - output.shape[1])
+        if output.shape[-1] != self._max_width:
+            pd = (0,self._max_width - output.shape[-1])
             output = F.pad(output,pd,'constant')
         return output
 
@@ -42,6 +42,8 @@ class Network(nn.Module):
 
         self._ops = nn.ModuleList()
 
+        self.dag = None
+
         for i in range(self.args._max_depth):
             if i == 0:
                 op = Node(self.args._network_inputsize, self.args._max_width)
@@ -52,11 +54,11 @@ class Network(nn.Module):
 
         self.postprocess = nn.Linear(self.args._max_width, self.args._network_outputsize)
 
-    def forward(self, inputs, dag):
+    def forward(self, t, inputs):
 
         interm = inputs
         for i,op in enumerate(self._ops):
-            interm = op(interm, dag[i])
+            interm = op(interm, self.dag[i])
 
         outputs = self.postprocess(interm)
         return outputs
