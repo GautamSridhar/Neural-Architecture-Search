@@ -19,6 +19,10 @@ import torchvision.utils as vutils
 import seaborn as sns
 import torch.nn.init as init
 import pickle
+
+from torchdiffeq import odeint_adjoint as odeint
+from dataset_def import generate_data,  get_batch, LotkaVolterra, FHN
+
 import network
 
 
@@ -64,44 +68,49 @@ def main(args, ITE=0):
     # If you want to add extra datasets paste here
 
     elif args.dataset == 'LV':
-        a = 1.
-        b = 0.1
-        c = 1.5
-        d = 0.75
+        datfunc = LotkaVolterra()
 
-        def dX_dt(X, t=0):
-            p = np.array([ a*X[0] -   b*X[0]*X[1] ,
-                          -c*X[1] + d*b*X[0]*X[1] ])
-            return p  
-
-        t_train = torch.linspace(0.,25.,1000)
-        t_eval = torch.linspace(0.,100.,1000)
-        t_test = torch.linspace(0,200,1000)
-        X0 = torch.tensor([10.,5.])
-        X_train = integrate.odeint(dX_dt, X0.numpy(), t_train.numpy())
-        X_eval = integrate.odeint(dX_dt,X0.numpy(),t_eval.numpy())
-        X_test = integrate.odeint(dX_dt, X0.numpy(),t_test.numpy())
-
-        dx_dt_train = dX_dt(X_train.T)
-        dx_dt_eval = dX_dt(X_eval.T)
-        dx_dt_test = dX_dt(X_test.T)
-
-        noisy_dxdt = dx_dt_train #+ 0.75*np.random.randn(X.shape[1],X.shape[0])
-
-        x_train = torch.from_numpy(X_train).float()
-        y_train = torch.from_numpy(noisy_dxdt.T).float()
-        train_queue = (x_train,y_train)
-
-        x_eval = torch.from_numpy(X_eval).float()
-        y_eval = torch.from_numpy(dx_dt_eval.T).float()
-        valid_queue = (x_eval,y_eval)
-
-        x_test = torch.from_numpy(X_test).float()
-
-
+    elif args.dataset == 'FHN':
+        datfunc = FHN()
     else:
         print("\nWrong Dataset choice \n")
         exit()
+
+    t_train = torch.linspace(0.,25.,1000)
+    t_eval = torch.linspace(0.,100.,1000)
+    t_test = torch.linspace(0,200,1000)
+    X0 = torch.tensor([10.,5.])
+
+    X_train = generate_data(X0, t_train, method=args.integrate_method, typ=args.dataset)
+    X_eval = generate_data(X0, t_eval, method=args.integrate_method, typ=args.dataset)
+    X_test = generate_data(X0, t_test, method=args.integrate_method, typ=args.dataset)
+
+    dx_dt_train = datfunc(t=None,x=X_train.numpy().T)
+    dx_dt_eval = datfunc(t=None,x=X_eval.numpy().T)
+    dx_dt_test = datfunc(t=None,x=X_test.numpy().T)
+
+    # Xtrain_noisy = X_train + 0.75*torch.randn(X_train.shape[0],X_train.shape[1])
+
+    # Xtrain_smooth = np.zeros((true_y_train_node.shape[0],true_y_train_node.shape[1]))
+
+    # xhat0 = scipy.signal.savgol_filter(Xtrain_noisy.numpy()[:,0], 45, 2) # window size 45, polynomial order 2
+    # xhat1 = scipy.signal.savgol_filter(Xtrain_noisy.numpy()[:,1], 45, 2) # window size 45, polynomial order 2
+
+    # Xtrain_smooth[:,0] = xhat0
+    # Xtrain_smooth[:,1] = xhat1
+
+    # torched_Xtrain_smooth = torch.from_numpy(Xtrain_smooth)
+
+    # dx_dt_train_regress = np.gradient(Xtrain_smooth, t_train, axis=0)
+
+    # torched_X_train = torch.from_numpy(Xtrain_smooth)
+    # torched_der_train_regress = torch.from_numpy(der_train_regress)
+
+    train_queue = (X_train,dx_dt_train.T)
+
+    valid_queue = (X_eval,dx_dt_eval.T)
+
+    # x_test = torch.from_numpy(X_test).float()
 
     # train_loader = torch.utils.data.DataLoader(traindataset, batch_size=args.batch_size, shuffle=True, num_workers=0,drop_last=False)
     #train_loader = cycle(train_loader)
@@ -283,7 +292,7 @@ def train(model, train_loader, optimizer, criterion):
     optimizer.zero_grad()
     #imgs, targets = next(train_loader)
     inputs, targets = train_loader[0].to(device), train_loader[1].to(device)
-    output = model(inputs)
+    output = model(t=None, x=inputs)
     train_loss = criterion(output, targets)
     train_loss.backward()
 
@@ -305,7 +314,7 @@ def test(model, test_loader, criterion, t_eval, ax):
     correct = 0
     with torch.no_grad():
         inputs, target = test_loader[0].to(device), test_loader[1].to(device)
-        output = model(inputs)
+        output = model(t=None, x=inputs)
         accuracy = torch.mean(torch.abs(output - target))  # sum up batch loss
         ax.cla()
         ax.plot(t_eval.numpy(),target,'g-',label='Valid')
@@ -447,8 +456,11 @@ if __name__=="__main__":
     
     # Arguement Parser
     parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+    parser.add_argument('--batch_size', type=int, default=50, help='batch size of data')
+    parser.add_argument('--batch_time', type=int, default=25, help='batch time of data')
+    parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
     parser.add_argument("--lr",default= 1.2e-2, type=float, help="Learning rate")
-    parser.add_argument("--batch_size", default=60, type=int)
     parser.add_argument("--start_iter", default=0, type=int)
     parser.add_argument("--end_iter", default=100, type=int)
     parser.add_argument("--print_freq", default=1, type=int)
@@ -456,7 +468,6 @@ if __name__=="__main__":
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--prune_type", default="lt", type=str, help="lt | reinit")
     parser.add_argument("--gpu", default="0", type=str)
-    parser.add_argument("--dataset", default="LV", type=str, help="mnist | cifar10 | fashionmnist | cifar100")
     parser.add_argument("--arch_type", default="network", type=str, help="fc1 | lenet5 | alexnet | vgg16 | resnet18 | densenet121")
     parser.add_argument("--prune_percent", default=2, type=int, help="Pruning percent")
     parser.add_argument("--prune_iterations", default=10, type=int, help="Pruning iterations count")

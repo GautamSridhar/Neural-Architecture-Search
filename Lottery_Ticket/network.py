@@ -13,6 +13,6 @@ class fc1(nn.Module):
             nn.Linear(32, 2),
         )
 
-    def forward(self, x):
+    def forward(self, t, x):
         x = self.classifier(x)
         return x
