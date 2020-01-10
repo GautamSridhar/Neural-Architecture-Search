@@ -12,7 +12,7 @@ import torch.utils
 import torch.nn.functional as F
 
 from torchdiffeq import odeint_adjoint as odeint
-from dataset_def import generate_data,  get_batch, LotkaVolterra, FHN
+import dataset_def as Dat
 
 import matplotlib.pyplot as plt
 
@@ -22,7 +22,7 @@ from architect import Architect
 
 
 parser = argparse.ArgumentParser("Regression Search")
-parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+parser.add_argument('--dataset', type=str, default='Chemostat', help='dataset to be used')
 parser.add_argument('--batch_size', type=int, default=50, help='batch size of data')
 parser.add_argument('--batch_time', type=int, default=25, help='batch time of data')
 parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
@@ -55,23 +55,109 @@ fh.setFormatter(logging.Formatter(log_format))
 logging.getLogger().addHandler(fh)
 
 # Data #############################
+
 if args.dataset == 'LV':
-    datfunc = LotkaVolterra()
+    # 1
+
+    X0 = torch.tensor([10.,5.])
+    theta = [1.0, 0.1, 1.5, 0.75]
+    datfunc = Dat.LotkaVolterra(theta)
+
+    t_train = torch.linspace(0.,25.,1000)
+    t_eval = torch.linspace(0.,100.,1000)
+    t_test = torch.linspace(0,200,100)
+
 elif args.dataset == 'FHN':
-    datfunc = FHN()
+    #2
 
-t_train = torch.linspace(0.,25.,1000)
-t_eval = torch.linspace(0.,100.,1000)
-t_test = torch.linspace(0,200,1000)
-X0 = torch.tensor([10.,5.])
+    X0 = torch.tensor([-1.0, 1.0])
+    theta = [0.2,0.2,3.0]
+    datfunc = Dat.FHN(theta)
 
-X_train = generate_data(X0, t_train, method=args.integrate_method, typ=args.dataset)
-X_eval = generate_data(X0, t_eval, method=args.integrate_method, typ=args.dataset)
-X_test = generate_data(X0, t_test, method=args.integrate_method, typ=args.dataset)
+    t_train = torch.linspace(0.,25.,1000)
+    t_eval = torch.linspace(0.,100.,1000)
+    t_test = torch.linspace(0,200,100)
+
+elif args.dataset == 'Lorenz63':
+    #3
+
+    X0 = torch.tensor([1.0, 1.0, 1.0])
+    theta = [10.0, 28.0, 8.0/3.0]
+    datfunc = Dat.Lorenz63(theta)
+
+    t_train = torch.linspace(0.,25.,1000) # Need to ask about extents for test case Lorenz
+    t_eval = torch.linspace(0.,50.,100)
+    t_test = torch.linspace(0.,100.,100)
+
+# Need X0 and parameters
+# elif args.dataset == 'Lorenz96':
+      # 4
+#     X0 = torch.tensor([])
+#     theta = 
+#     datfunc = Lorenz96(theta)
+
+elif args.dataset == 'ChemicalReactionSimple':
+    #5
+    X0 = torch.tensor([1., 1.])
+    theta = [.5, .8, .4]
+    datfunc = Dat.ChemicalReactionSimple(theta)
+
+    t_train = torch.linspace(0.,25.,1000)
+    t_eval = torch.linspace(0.,100.,1000)
+    t_test = torch.linspace(0,200,100)
+
+elif args.dataset == 'Chemostat':
+    #6
+    X0 = torch.tensor([1., 2., 3., 4., 5., 6., 10.])
+
+    Cetas = np.linspace(2., 3., 6,dtype=float)
+    VMs = np.linspace(1., 2., 6,dtype=float)
+    KMs = np.ones(6,dtype=float)
+
+    theta = np.squeeze(np.concatenate([Cetas.reshape([1, -1]),
+                            VMs.reshape([1, -1]),
+                            KMs.reshape([1, -1])],
+                            axis=1))
+    flowrate = 2.
+    feedConc = 3.
+    datfunc = Dat.Chemostat(6, flowrate, feedConc, theta)
+
+    t_train = torch.linspace(0.,1.,1000) # Ask about the extent here
+    t_eval = torch.linspace(0.,2.,1000)
+    t_test = torch.linspace(0,5,100)
+
+elif args.dataset == 'Clock':
+    #7
+    X0 = torch.tensor([1, 1.2, 1.9, .3, .8, .98, .8])
+    theta = np.asarray([.8, .05, 1.2, 1.5, 1.4, .13, 1.5, .33, .18, .26,
+                        .28, .5, .089, .52, 2.1, .052, .72])
+    datfunc = Dat.Clock(theta)
+
+    t_train = torch.linspace(0.,5.,1000)
+    t_eval = torch.linspace(0.,10.,1000)
+    t_test = torch.linspace(0,20,100)
+
+elif args.dataset == 'ProteinTransduction':
+    #8
+    X0 = torch.tensor([1., 0., 1., 0., 0.])
+    theta = [0.07, 0.6, 0.05, 0.3, 0.017, 0.3]
+    datfunc = Dat.ProteinTransduction(theta)
+    t_train = torch.linspace(0.,25.,1000)
+    t_eval = torch.linspace(0.,100.,1000)
+    t_test = torch.linspace(0,200,1000)
+
+
+X_train = Dat.generate_data(datfunc, X0, t_train, method=args.integrate_method)
+X_eval = Dat.generate_data(datfunc, X0, t_eval, method=args.integrate_method)
+X_test = Dat.generate_data(datfunc, X0, t_test, method=args.integrate_method)
 
 dx_dt_train = datfunc(t=None,x=X_train.numpy().T)
 dx_dt_eval = datfunc(t=None,x=X_eval.numpy().T)
 dx_dt_test = datfunc(t=None,x=X_test.numpy().T)
+
+plt.plot(t_test.numpy(), X_test[:,2].numpy())
+plt.show()
+time.sleep(60)
 
 # Xtrain_noisy = X_train + 0.75*torch.randn(X_train.shape[0],X_train.shape[1])
 

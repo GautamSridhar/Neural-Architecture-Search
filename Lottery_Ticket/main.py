@@ -21,7 +21,7 @@ import torch.nn.init as init
 import pickle
 
 from torchdiffeq import odeint_adjoint as odeint
-from dataset_def import generate_data,  get_batch, LotkaVolterra, FHN
+import dataset_def as Dat
 
 import network
 
@@ -44,67 +44,109 @@ def main(args, ITE=0):
 
     # Data Loader
     # Change data here
-    transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,), (0.3081,))])
-    if args.dataset == "mnist":
-        traindataset = datasets.MNIST('../data', train=True, download=True,transform=transform)
-        testdataset = datasets.MNIST('../data', train=False, transform=transform)
-        from archs.mnist import AlexNet, LeNet5, fc1, vgg, resnet
-
-    elif args.dataset == "cifar10":
-        traindataset = datasets.CIFAR10('../data', train=True, download=True,transform=transform)
-        testdataset = datasets.CIFAR10('../data', train=False, transform=transform)      
-        from archs.cifar10 import AlexNet, LeNet5, fc1, vgg, resnet, densenet 
-
-    elif args.dataset == "fashionmnist":
-        traindataset = datasets.FashionMNIST('../data', train=True, download=True,transform=transform)
-        testdataset = datasets.FashionMNIST('../data', train=False, transform=transform)
-        from archs.mnist import AlexNet, LeNet5, fc1, vgg, resnet 
-
-    elif args.dataset == "cifar100":
-        traindataset = datasets.CIFAR100('../data', train=True, download=True,transform=transform)
-        testdataset = datasets.CIFAR100('../data', train=False, transform=transform)   
-        from archs.cifar100 import AlexNet, fc1, LeNet5, vgg, resnet  
     
     # If you want to add extra datasets paste here
 
-    elif args.dataset == 'LV':
-        datfunc = LotkaVolterra()
+    # Data #######################################
+
+    if args.dataset == 'LV':
+        # 1
+
+        X0 = torch.tensor([10.,5.])
+        theta = [1.0, 0.1, 1.5, 0.75]
+        datfunc = Dat.LotkaVolterra(theta)
+
+        t_train = torch.linspace(0.,25.,1000)
+        t_eval = torch.linspace(0.,100.,1000)
+        t_test = torch.linspace(0,200,100)
 
     elif args.dataset == 'FHN':
-        datfunc = FHN()
-    else:
-        print("\nWrong Dataset choice \n")
-        exit()
+        #2
 
-    t_train = torch.linspace(0.,25.,1000)
-    t_eval = torch.linspace(0.,100.,1000)
-    t_test = torch.linspace(0,200,1000)
-    X0 = torch.tensor([10.,5.])
+        X0 = torch.tensor([-1.0, 1.0])
+        theta = [0.2,0.2,3.0]
+        datfunc = Dat.FHN(theta)
 
-    X_train = generate_data(X0, t_train, method=args.integrate_method, typ=args.dataset)
-    X_eval = generate_data(X0, t_eval, method=args.integrate_method, typ=args.dataset)
-    X_test = generate_data(X0, t_test, method=args.integrate_method, typ=args.dataset)
+        t_train = torch.linspace(0.,25.,1000)
+        t_eval = torch.linspace(0.,100.,1000)
+        t_test = torch.linspace(0,200,100)
+
+    elif args.dataset == 'Lorenz63':
+        #3
+
+        X0 = torch.tensor([1.0, 1.0, 1.0])
+        theta = [10.0, 28.0, 8.0/3.0]
+        datfunc = Dat.Lorenz63(theta)
+
+        t_train = torch.linspace(0.,25.,1000) # Need to ask about extents for test case Lorenz
+        t_eval = torch.linspace(0.,50.,100)
+        t_test = torch.linspace(0.,100.,100)
+
+    # Need X0 and parameters
+    # elif args.dataset == 'Lorenz96':
+          # 4
+    #     X0 = torch.tensor([])
+    #     theta = 
+    #     datfunc = Lorenz96(theta)
+
+    elif args.dataset == 'ChemicalReactionSimple':
+        #5
+        X0 = torch.tensor([1., 1.])
+        theta = [.5, .8, .4]
+        datfunc = Dat.ChemicalReactionSimple(theta)
+
+        t_train = torch.linspace(0.,25.,1000)
+        t_eval = torch.linspace(0.,100.,1000)
+        t_test = torch.linspace(0,200,100)
+
+    elif args.dataset == 'Chemostat':
+        #6
+        X0 = torch.tensor([1., 2., 3., 4., 5., 6., 10.])
+
+        Cetas = np.linspace(2., 3., 6,dtype=float)
+        VMs = np.linspace(1., 2., 6,dtype=float)
+        KMs = np.ones(6,dtype=float)
+
+        theta = np.squeeze(np.concatenate([Cetas.reshape([1, -1]),
+                                VMs.reshape([1, -1]),
+                                KMs.reshape([1, -1])],
+                                axis=1))
+        flowrate = 2.
+        feedConc = 3.
+        datfunc = Dat.Chemostat(6, flowrate, feedConc, theta)
+
+        t_train = torch.linspace(0.,1.,1000) # Ask about the extent here
+        t_eval = torch.linspace(0.,2.,1000)
+        t_test = torch.linspace(0,5,100)
+
+    elif args.dataset == 'Clock':
+        #7
+        X0 = torch.tensor([1, 1.2, 1.9, .3, .8, .98, .8])
+        theta = np.asarray([.8, .05, 1.2, 1.5, 1.4, .13, 1.5, .33, .18, .26,
+                            .28, .5, .089, .52, 2.1, .052, .72])
+        datfunc = Dat.Clock(theta)
+
+        t_train = torch.linspace(0.,5.,1000)
+        t_eval = torch.linspace(0.,10.,1000)
+        t_test = torch.linspace(0,20,100)
+
+    elif args.dataset == 'ProteinTransduction':
+        #8
+        X0 = torch.tensor([1., 0., 1., 0., 0.])
+        theta = [0.07, 0.6, 0.05, 0.3, 0.017, 0.3]
+        datfunc = Dat.ProteinTransduction(theta)
+        t_train = torch.linspace(0.,25.,1000)
+        t_eval = torch.linspace(0.,100.,1000)
+        t_test = torch.linspace(0,200,1000)
+
+
+    X_train = Dat.generate_data(datfunc, X0, t_train, method=args.integrate_method)
+    X_eval = Dat.generate_data(datfunc, X0, t_eval, method=args.integrate_method)
+    X_test = Dat.generate_data(datfunc, X0, t_test, method=args.integrate_method)
 
     dx_dt_train = datfunc(t=None,x=X_train.numpy().T)
     dx_dt_eval = datfunc(t=None,x=X_eval.numpy().T)
     dx_dt_test = datfunc(t=None,x=X_test.numpy().T)
-
-    # Xtrain_noisy = X_train + 0.75*torch.randn(X_train.shape[0],X_train.shape[1])
-
-    # Xtrain_smooth = np.zeros((true_y_train_node.shape[0],true_y_train_node.shape[1]))
-
-    # xhat0 = scipy.signal.savgol_filter(Xtrain_noisy.numpy()[:,0], 45, 2) # window size 45, polynomial order 2
-    # xhat1 = scipy.signal.savgol_filter(Xtrain_noisy.numpy()[:,1], 45, 2) # window size 45, polynomial order 2
-
-    # Xtrain_smooth[:,0] = xhat0
-    # Xtrain_smooth[:,1] = xhat1
-
-    # torched_Xtrain_smooth = torch.from_numpy(Xtrain_smooth)
-
-    # dx_dt_train_regress = np.gradient(Xtrain_smooth, t_train, axis=0)
-
-    # torched_X_train = torch.from_numpy(Xtrain_smooth)
-    # torched_der_train_regress = torch.from_numpy(der_train_regress)
 
     train_queue = (X_train,dx_dt_train.T)
 
@@ -112,25 +154,9 @@ def main(args, ITE=0):
 
     # x_test = torch.from_numpy(X_test).float()
 
-    # train_loader = torch.utils.data.DataLoader(traindataset, batch_size=args.batch_size, shuffle=True, num_workers=0,drop_last=False)
-    #train_loader = cycle(train_loader)
-    # test_loader = torch.utils.data.DataLoader(testdataset, batch_size=args.batch_size, shuffle=False, num_workers=0,drop_last=True)
-    
     # Importing Network Architecture/ Import only one model here
     global model
-    if args.arch_type == "fc1":
-       model = fc1.fc1().to(device)
-    elif args.arch_type == "lenet5":
-        model = LeNet5.LeNet5().to(device)
-    elif args.arch_type == "alexnet":
-        model = AlexNet.AlexNet().to(device)
-    elif args.arch_type == "vgg16":
-        model = vgg.vgg16().to(device)  
-    elif args.arch_type == "resnet18":
-        model = resnet.resnet18().to(device)   
-    elif args.arch_type == "densenet121":
-        model = densenet.densenet121().to(device)
-    elif args.arch_type == 'network':
+    if args.arch_type == 'network':
         model = network.fc1().to(device)   
     # If you want to add extra model paste here
     else:
@@ -210,7 +236,6 @@ def main(args, ITE=0):
 
         pbar = tqdm(range(args.end_iter))
         for iter_ in pbar:
-
             # Frequency for Testing
             if iter_ % args.valid_freq == 0:
                 accuracy = test(model, valid_queue, criterion, t_eval, ax)
@@ -222,7 +247,7 @@ def main(args, ITE=0):
                     torch.save(model,f"{os.getcwd()}/saves/{args.arch_type}/{args.dataset}/{_ite}_model_{args.prune_type}.pt")
 
             # Training
-            loss = train(model, train_queue, optimizer, criterion)
+            loss = train(model, train_queue, optimizer, criterion, t_train)
             all_loss[iter_] = loss
             all_accuracy[iter_] = accuracy
             
@@ -285,16 +310,34 @@ def main(args, ITE=0):
     # plt.close()                    
    
 # Function for Training
-def train(model, train_loader, optimizer, criterion):
+def train(model, train_loader, optimizer, criterion, t_train):
     EPS = 1e-6
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu")
     optimizer.zero_grad()
     #imgs, targets = next(train_loader)
+    batch_x0, batch_t, batch_x, batch_der = Dat.get_batch(1000, args.batch_time, args.batch_size,
+                                                      train_loader[0], train_loader[1], t_train)
+
+    batch_regress = batch_x.view(args.batch_size, args.batch_time, -1)
+    batch_der = batch_der.view(args.batch_size, args.batch_time, -1)
+
+    batch_regress, batch_der = batch_regress.to(device), batch_der.to(device)
+
+    regress_pred = model(t=None, x=batch_regress.float())
+    loss_regress = criterion(regress_pred, batch_der.float())
+
+    pred_x = odeint(model, batch_x0.float(), batch_t.float(),method=args.integrate_method)
+    loss_node = criterion(pred_x.float(),batch_x.float())
+
     inputs, targets = train_loader[0].to(device), train_loader[1].to(device)
+
     output = model(t=None, x=inputs)
-    train_loss = criterion(output, targets)
+    train_loss = loss_regress + loss_node
+
     train_loss.backward()
+
+    loss = criterion(output,targets)
 
     # Freezing Pruned weights by making their gradients Zero
     for name, p in model.named_parameters():
@@ -304,12 +347,11 @@ def train(model, train_loader, optimizer, criterion):
             grad_tensor = np.where(tensor < EPS, 0, grad_tensor)
             p.grad.data = torch.from_numpy(grad_tensor).to(device)
     optimizer.step()
-    return train_loss.item()
+    return loss.item()
 
 # Function for Testing
 def test(model, test_loader, criterion, t_eval, ax):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.eval()
+    device = torch.device("cpu")
     test_loss = 0
     correct = 0
     with torch.no_grad():
@@ -457,8 +499,8 @@ if __name__=="__main__":
     # Arguement Parser
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
-    parser.add_argument('--batch_size', type=int, default=50, help='batch size of data')
-    parser.add_argument('--batch_time', type=int, default=25, help='batch time of data')
+    parser.add_argument('--batch_size', type=int, default=25, help='batch size of data')
+    parser.add_argument('--batch_time', type=int, default=10, help='batch time of data')
     parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
     parser.add_argument("--lr",default= 1.2e-2, type=float, help="Learning rate")
     parser.add_argument("--start_iter", default=0, type=int)
@@ -468,7 +510,7 @@ if __name__=="__main__":
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--prune_type", default="lt", type=str, help="lt | reinit")
     parser.add_argument("--gpu", default="0", type=str)
-    parser.add_argument("--arch_type", default="network", type=str, help="fc1 | lenet5 | alexnet | vgg16 | resnet18 | densenet121")
+    parser.add_argument("--arch_type", default="network", type=str, help="network")
     parser.add_argument("--prune_percent", default=2, type=int, help="Pruning percent")
     parser.add_argument("--prune_iterations", default=10, type=int, help="Pruning iterations count")
 

@@ -16,8 +16,7 @@ import torch.nn.functional as F
 from scipy import integrate
 
 from torchdiffeq import odeint_adjoint as odeint
-from dataset_def import generate_data,  get_batch, LotkaVolterra, FHN
-
+import dataset_def as Dat
 
 import matplotlib.pyplot as plt
 
@@ -36,42 +35,108 @@ class DartsWrapper:
         #torch.cuda.set_device(args.gpu)
 
         # Data #############################
-
         if args.dataset == 'LV':
-            datfunc = LotkaVolterra()
+            # 1
+
+            X0 = torch.tensor([10.,5.])
+            theta = [1.0, 0.1, 1.5, 0.75]
+            datfunc = Dat.LotkaVolterra(theta)
+
+            t_train = torch.linspace(0.,25.,1000)
+            t_eval = torch.linspace(0.,100.,1000)
+            t_test = torch.linspace(0,200,100)
+
         elif args.dataset == 'FHN':
-            datfunc = FHN()
+            #2
 
-        self.t_train = torch.linspace(0.,25.,1000)
-        self.t_eval = torch.linspace(0.,100.,1000)
-        self.t_test = torch.linspace(0,200,1000)
-        X0 = torch.tensor([10.,5.])
+            X0 = torch.tensor([-1.0, 1.0])
+            theta = [0.2,0.2,3.0]
+            datfunc = Dat.FHN(theta)
 
-        X_train = generate_data(X0, self.t_train, method=args.integrate_method, typ=args.dataset)
-        X_eval = generate_data(X0, self.t_eval, method=args.integrate_method, typ=args.dataset)
-        X_test = generate_data(X0, self.t_test, method=args.integrate_method, typ=args.dataset)
+            t_train = torch.linspace(0.,25.,1000)
+            t_eval = torch.linspace(0.,100.,1000)
+            t_test = torch.linspace(0,200,100)
+
+        elif args.dataset == 'Lorenz63':
+            #3
+
+            X0 = torch.tensor([1.0, 1.0, 1.0])
+            theta = [10.0, 28.0, 8.0/3.0]
+            datfunc = Dat.Lorenz63(theta)
+
+            t_train = torch.linspace(0.,25.,1000) # Need to ask about extents for test case Lorenz
+            t_eval = torch.linspace(0.,50.,100)
+            t_test = torch.linspace(0.,100.,100)
+
+        # Need X0 and parameters
+        # elif args.dataset == 'Lorenz96':
+              # 4
+        #     X0 = torch.tensor([])
+        #     theta = 
+        #     datfunc = Lorenz96(theta)
+
+        elif args.dataset == 'ChemicalReactionSimple':
+            #5
+            X0 = torch.tensor([1., 1.])
+            theta = [.5, .8, .4]
+            datfunc = Dat.ChemicalReactionSimple(theta)
+
+            t_train = torch.linspace(0.,25.,1000)
+            t_eval = torch.linspace(0.,100.,1000)
+            t_test = torch.linspace(0,200,100)
+
+        elif args.dataset == 'Chemostat':
+            #6
+            X0 = torch.tensor([1., 2., 3., 4., 5., 6., 10.])
+
+            Cetas = np.linspace(2., 3., 6,dtype=float)
+            VMs = np.linspace(1., 2., 6,dtype=float)
+            KMs = np.ones(6,dtype=float)
+
+            theta = np.squeeze(np.concatenate([Cetas.reshape([1, -1]),
+                                    VMs.reshape([1, -1]),
+                                    KMs.reshape([1, -1])],
+                                    axis=1))
+            flowrate = 2.
+            feedConc = 3.
+            datfunc = Dat.Chemostat(6, flowrate, feedConc, theta)
+
+            t_train = torch.linspace(0.,1.,1000) # Ask about the extent here
+            t_eval = torch.linspace(0.,2.,1000)
+            t_test = torch.linspace(0,5,100)
+
+        elif args.dataset == 'Clock':
+            #7
+            X0 = torch.tensor([1, 1.2, 1.9, .3, .8, .98, .8])
+            theta = np.asarray([.8, .05, 1.2, 1.5, 1.4, .13, 1.5, .33, .18, .26,
+                                .28, .5, .089, .52, 2.1, .052, .72])
+            datfunc = Dat.Clock(theta)
+
+            t_train = torch.linspace(0.,5.,1000)
+            t_eval = torch.linspace(0.,10.,1000)
+            t_test = torch.linspace(0,20,100)
+
+        elif args.dataset == 'ProteinTransduction':
+            #8
+            X0 = torch.tensor([1., 0., 1., 0., 0.])
+            theta = [0.07, 0.6, 0.05, 0.3, 0.017, 0.3]
+            datfunc = Dat.ProteinTransduction(theta)
+            t_train = torch.linspace(0.,25.,1000)
+            t_eval = torch.linspace(0.,100.,1000)
+            t_test = torch.linspace(0,200,1000)
+
+        self.t_train = t_train
+        self.t_eval = t_eval
+        self.t_test = t_test
+
+
+        X_train = Dat.generate_data(datfunc, X0, t_train, method=args.integrate_method)
+        X_eval = Dat.generate_data(datfunc, X0, t_eval, method=args.integrate_method)
+        X_test = Dat.generate_data(datfunc, X0, t_test, method=args.integrate_method)
 
         dx_dt_train = datfunc(t=None,x=X_train.numpy().T)
         dx_dt_eval = datfunc(t=None,x=X_eval.numpy().T)
         dx_dt_test = datfunc(t=None,x=X_test.numpy().T)
-
-        # Xtrain_noisy = X_train + 0.75*torch.randn(X_train.shape[0],X_train.shape[1])
-
-        # Xtrain_smooth = np.zeros((true_y_train_node.shape[0],true_y_train_node.shape[1]))
-
-        # xhat0 = scipy.signal.savgol_filter(Xtrain_noisy.numpy()[:,0], 45, 2) # window size 45, polynomial order 2
-        # xhat1 = scipy.signal.savgol_filter(Xtrain_noisy.numpy()[:,1], 45, 2) # window size 45, polynomial order 2
-
-        # Xtrain_smooth[:,0] = xhat0
-        # Xtrain_smooth[:,1] = xhat1
-
-        # torched_Xtrain_smooth = torch.from_numpy(Xtrain_smooth)
-
-        # dx_dt_train_regress = np.gradient(Xtrain_smooth, t_train, axis=0)
-
-        # torched_X_train = torch.from_numpy(Xtrain_smooth)
-        # torched_der_train_regress = torch.from_numpy(der_train_regress)
-
 
         self.train_queue = (X_train,dx_dt_train.T)
 
@@ -105,7 +170,7 @@ class DartsWrapper:
         lr = self.scheduler.get_lr()[0]
 
         # Declare batches and randomly sample batches.
-        batch_x0, batch_t, batch_x, batch_der = get_batch(1000, args.batch_time, args.batch_size,
+        batch_x0, batch_t, batch_x, batch_der = Dat.get_batch(1000, args.batch_time, args.batch_size,
                                                           self.train_queue[0], self.train_queue[1], self.t_train)
 
         weights = self.get_weights_from_arch(arch)
@@ -155,7 +220,6 @@ class DartsWrapper:
         logging.info(self.model.genotype(weights))
 
         with torch.no_grad():
-                t_test = torch.linspace(0,200,1000)
                 logits = self.model(t=None, x=self.valid_queue[0])
                 loss = self.criterion(logits, self.valid_queue[1])
 
@@ -170,8 +234,8 @@ class DartsWrapper:
                     logging.info('valid %03d %e %f', step, objs.avg, mae.avg)
                     ax.cla()
                     # ax[0,1].cla()
-                    ax.plot(t_test.numpy(),self.test_queue[1],'g-',label='Test')
-                    ax.plot(t_test.numpy(),logits_test.numpy(),'b-',label='Learned')
+                    ax.plot(self.t_test.numpy(),self.test_queue[1],'g-',label='Test')
+                    ax.plot(self.t_test.numpy(),logits_test.numpy(),'b-',label='Learned')
                     ax.legend()
                     ax.set_title("Learned regression")
 
