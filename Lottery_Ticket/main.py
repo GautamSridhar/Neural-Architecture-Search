@@ -21,6 +21,7 @@ import torch.nn.init as init
 import pickle
 import network
 
+import dataset_def as Dat
 
 # Custom Libraries
 import utils
@@ -40,88 +41,112 @@ def main(args, ITE=0):
 
     # Data Loader
     # Change data here
-    transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,), (0.3081,))])
-    if args.dataset == "mnist":
-        traindataset = datasets.MNIST('../data', train=True, download=True,transform=transform)
-        testdataset = datasets.MNIST('../data', train=False, transform=transform)
-        from archs.mnist import AlexNet, LeNet5, fc1, vgg, resnet
+    if args.dataset == 'LV':
+        # 1
 
-    elif args.dataset == "cifar10":
-        traindataset = datasets.CIFAR10('../data', train=True, download=True,transform=transform)
-        testdataset = datasets.CIFAR10('../data', train=False, transform=transform)      
-        from archs.cifar10 import AlexNet, LeNet5, fc1, vgg, resnet, densenet 
-
-    elif args.dataset == "fashionmnist":
-        traindataset = datasets.FashionMNIST('../data', train=True, download=True,transform=transform)
-        testdataset = datasets.FashionMNIST('../data', train=False, transform=transform)
-        from archs.mnist import AlexNet, LeNet5, fc1, vgg, resnet 
-
-    elif args.dataset == "cifar100":
-        traindataset = datasets.CIFAR100('../data', train=True, download=True,transform=transform)
-        testdataset = datasets.CIFAR100('../data', train=False, transform=transform)   
-        from archs.cifar100 import AlexNet, fc1, LeNet5, vgg, resnet  
-    
-    # If you want to add extra datasets paste here
-
-    elif args.dataset == 'LV':
-        a = 1.
-        b = 0.1
-        c = 1.5
-        d = 0.75
-
-        def dX_dt(X, t=0):
-            p = np.array([ a*X[0] -   b*X[0]*X[1] ,
-                          -c*X[1] + d*b*X[0]*X[1] ])
-            return p  
+        X0 = torch.tensor([10.,5.])
+        theta = [1.0, 0.1, 1.5, 0.75]
+        datfunc = Dat.LotkaVolterra(theta)
 
         t_train = torch.linspace(0.,25.,1000)
         t_eval = torch.linspace(0.,100.,1000)
+        t_test = torch.linspace(0,200,100)
+
+    elif args.dataset == 'FHN':
+        #2
+
+        X0 = torch.tensor([-1.0, 1.0])
+        theta = [0.2,0.2,3.0]
+        datfunc = Dat.FHN(theta)
+
+        t_train = torch.linspace(0.,25.,1000)
+        t_eval = torch.linspace(0.,100.,1000)
+        t_test = torch.linspace(0,200,100)
+
+    elif args.dataset == 'Lorenz63':
+        #3
+
+        X0 = torch.tensor([1.0, 1.0, 1.0])
+        theta = [10.0, 28.0, 8.0/3.0]
+        datfunc = Dat.Lorenz63(theta)
+
+        t_train = torch.linspace(0.,25.,1000) # Need to ask about extents for test case Lorenz
+        t_eval = torch.linspace(0.,50.,100)
+        t_test = torch.linspace(0.,100.,100)
+
+    # Need X0 and parameters
+    # elif args.dataset == 'Lorenz96':
+          # 4
+    #     X0 = torch.tensor([])
+    #     theta = 
+    #     datfunc = Lorenz96(theta)
+
+    elif args.dataset == 'ChemicalReactionSimple':
+        #5
+        X0 = torch.tensor([1., 1.])
+        theta = [.5, .8, .4]
+        datfunc = Dat.ChemicalReactionSimple(theta)
+
+        t_train = torch.linspace(0.,25.,1000)
+        t_eval = torch.linspace(0.,100.,1000)
+        t_test = torch.linspace(0,200,100)
+
+    elif args.dataset == 'Chemostat':
+        #6
+        X0 = torch.tensor([1., 2., 3., 4., 5., 6., 10.])
+
+        Cetas = np.linspace(2., 3., 6,dtype=float)
+        VMs = np.linspace(1., 2., 6,dtype=float)
+        KMs = np.ones(6,dtype=float)
+
+        theta = np.squeeze(np.concatenate([Cetas.reshape([1, -1]),
+                                VMs.reshape([1, -1]),
+                                KMs.reshape([1, -1])],
+                                axis=1))
+        flowrate = 2.
+        feedConc = 3.
+        datfunc = Dat.Chemostat(6, flowrate, feedConc, theta)
+
+        t_train = torch.linspace(0.,1.,1000) # Ask about the extent here
+        t_eval = torch.linspace(0.,2.,1000)
+        t_test = torch.linspace(0,5,100)
+
+    elif args.dataset == 'Clock':
+        #7
+        X0 = torch.tensor([1, 1.2, 1.9, .3, .8, .98, .8])
+        theta = np.asarray([.8, .05, 1.2, 1.5, 1.4, .13, 1.5, .33, .18, .26,
+                            .28, .5, .089, .52, 2.1, .052, .72])
+        datfunc = Dat.Clock(theta)
+
+        t_train = torch.linspace(0.,5.,1000)
+        t_eval = torch.linspace(0.,10.,1000)
+        t_test = torch.linspace(0,20,100)
+
+    elif args.dataset == 'ProteinTransduction':
+        #8
+        X0 = torch.tensor([1., 0., 1., 0., 0.])
+        theta = [0.07, 0.6, 0.05, 0.3, 0.017, 0.3]
+        datfunc = Dat.ProteinTransduction(theta)
+        t_train = torch.linspace(0.,25.,1000)
+        t_eval = torch.linspace(0.,100.,1000)
         t_test = torch.linspace(0,200,1000)
-        X0 = torch.tensor([10.,5.])
-        X_train = integrate.odeint(dX_dt, X0.numpy(), t_train.numpy())
-        X_eval = integrate.odeint(dX_dt,X0.numpy(),t_eval.numpy())
-        X_test = integrate.odeint(dX_dt, X0.numpy(),t_test.numpy())
-
-        dx_dt_train = dX_dt(X_train.T)
-        dx_dt_eval = dX_dt(X_eval.T)
-        dx_dt_test = dX_dt(X_test.T)
-
-        noisy_dxdt = dx_dt_train #+ 0.75*np.random.randn(X.shape[1],X.shape[0])
-
-        x_train = torch.from_numpy(X_train).float()
-        y_train = torch.from_numpy(noisy_dxdt.T).float()
-        train_queue = (x_train,y_train)
-
-        x_eval = torch.from_numpy(X_eval).float()
-        y_eval = torch.from_numpy(dx_dt_eval.T).float()
-        valid_queue = (x_eval,y_eval)
-
-        x_test = torch.from_numpy(X_test).float()
 
 
-    else:
-        print("\nWrong Dataset choice \n")
-        exit()
+    X_train = Dat.generate_data(datfunc, X0, t_train, method=args.integrate_method)
+    X_eval = Dat.generate_data(datfunc, X0, t_eval, method=args.integrate_method)
+    X_test = Dat.generate_data(datfunc, X0, t_test, method=args.integrate_method)
 
-    # train_loader = torch.utils.data.DataLoader(traindataset, batch_size=args.batch_size, shuffle=True, num_workers=0,drop_last=False)
-    #train_loader = cycle(train_loader)
-    # test_loader = torch.utils.data.DataLoader(testdataset, batch_size=args.batch_size, shuffle=False, num_workers=0,drop_last=True)
-    
+    dx_dt_train = datfunc(t=None,x=X_train.numpy().T)
+    dx_dt_eval = datfunc(t=None,x=X_eval.numpy().T)
+    dx_dt_test = datfunc(t=None,x=X_test.numpy().T)
+
+    train_queue = (X_train,dx_dt_train.T)
+
+    valid_queue = (X_eval,dx_dt_eval.T)
+
     # Importing Network Architecture/ Import only one model here
     global model
-    if args.arch_type == "fc1":
-       model = fc1.fc1().to(device)
-    elif args.arch_type == "lenet5":
-        model = LeNet5.LeNet5().to(device)
-    elif args.arch_type == "alexnet":
-        model = AlexNet.AlexNet().to(device)
-    elif args.arch_type == "vgg16":
-        model = vgg.vgg16().to(device)  
-    elif args.arch_type == "resnet18":
-        model = resnet.resnet18().to(device)   
-    elif args.arch_type == "densenet121":
-        model = densenet.densenet121().to(device)
-    elif args.arch_type == 'network':
+    if args.arch_type == 'network':
         model = network.fc1().to(device)   
     # If you want to add extra model paste here
     else:
@@ -447,8 +472,9 @@ if __name__=="__main__":
     
     # Arguement Parser
     parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+    parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
     parser.add_argument("--lr",default= 1.2e-2, type=float, help="Learning rate")
-    parser.add_argument("--batch_size", default=60, type=int)
     parser.add_argument("--start_iter", default=0, type=int)
     parser.add_argument("--end_iter", default=100, type=int)
     parser.add_argument("--print_freq", default=1, type=int)
@@ -456,7 +482,6 @@ if __name__=="__main__":
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--prune_type", default="lt", type=str, help="lt | reinit")
     parser.add_argument("--gpu", default="0", type=str)
-    parser.add_argument("--dataset", default="LV", type=str, help="mnist | cifar10 | fashionmnist | cifar100")
     parser.add_argument("--arch_type", default="network", type=str, help="fc1 | lenet5 | alexnet | vgg16 | resnet18 | densenet121")
     parser.add_argument("--prune_percent", default=2, type=int, help="Pruning percent")
     parser.add_argument("--prune_iterations", default=10, type=int, help="Pruning iterations count")

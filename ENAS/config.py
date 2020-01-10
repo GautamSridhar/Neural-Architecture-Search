@@ -82,6 +82,8 @@ learn_arg.add_argument('--derive_num_sample', type=int, default=10)
 
 # Misc
 misc_arg = add_argument_group('Misc')
+misc_arg.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+misc_arg.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
 misc_arg.add_argument('--load_path', type=str, default='')
 misc_arg.add_argument('--log_step_shared', type=int, default=5)
 misc_arg.add_argument('--log_step_controller', type=int, default=50)
