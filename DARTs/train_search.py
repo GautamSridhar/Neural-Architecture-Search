@@ -22,6 +22,9 @@ from architect import Architect
 
 parser = argparse.ArgumentParser("Regression Search")
 parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+parser.add_argument('--train_size', type=int, default=1000, help='size of the training set')
+parser.add_argument('--eval_size', type=int, default=1000, help='size of the validation set')
+parser.add_argument('--test_size', type=int, default=1000, help='size of the test set')
 parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
 parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
 parser.add_argument('--learning_rate_min', type=float, default=0.001, help='min learning rate')
@@ -59,9 +62,9 @@ if args.dataset == 'LV':
     theta = [1.0, 0.1, 1.5, 0.75]
     datfunc = Dat.LotkaVolterra(theta)
 
-    t_train = torch.linspace(0.,25.,1000)
-    t_eval = torch.linspace(0.,100.,1000)
-    t_test = torch.linspace(0,200,100)
+    t_train = torch.linspace(0.,25.,args.train_size)
+    t_eval = torch.linspace(0.,100.,args.eval_size)
+    t_test = torch.linspace(0,200,args.test_size)
 
 elif args.dataset == 'FHN':
     #2
@@ -70,9 +73,9 @@ elif args.dataset == 'FHN':
     theta = [0.2,0.2,3.0]
     datfunc = Dat.FHN(theta)
 
-    t_train = torch.linspace(0.,25.,1000)
-    t_eval = torch.linspace(0.,100.,1000)
-    t_test = torch.linspace(0,200,100)
+    t_train = torch.linspace(0.,25.,args.train_size)
+    t_eval = torch.linspace(0.,100.,args.eval_size)
+    t_test = torch.linspace(0,200,args.test_size)
 
 elif args.dataset == 'Lorenz63':
     #3
@@ -81,9 +84,9 @@ elif args.dataset == 'Lorenz63':
     theta = [10.0, 28.0, 8.0/3.0]
     datfunc = Dat.Lorenz63(theta)
 
-    t_train = torch.linspace(0.,25.,1000) # Need to ask about extents for test case Lorenz
-    t_eval = torch.linspace(0.,50.,100)
-    t_test = torch.linspace(0.,100.,100)
+    t_train = torch.linspace(0.,25.,args.train_size) # Need to ask about extents for test case Lorenz
+    t_eval = torch.linspace(0.,50.,args.eval_size)
+    t_test = torch.linspace(0.,100.,args.test_size)
 
 # Need X0 and parameters
 # elif args.dataset == 'Lorenz96':
@@ -98,9 +101,9 @@ elif args.dataset == 'ChemicalReactionSimple':
     theta = [.5, .8, .4]
     datfunc = Dat.ChemicalReactionSimple(theta)
 
-    t_train = torch.linspace(0.,25.,1000)
-    t_eval = torch.linspace(0.,100.,1000)
-    t_test = torch.linspace(0,200,100)
+    t_train = torch.linspace(0.,25.,args.train_size)
+    t_eval = torch.linspace(0.,100.,args.eval_size)
+    t_test = torch.linspace(0,200,args.test_size)
 
 elif args.dataset == 'Chemostat':
     #6
@@ -118,9 +121,9 @@ elif args.dataset == 'Chemostat':
     feedConc = 3.
     datfunc = Dat.Chemostat(6, flowrate, feedConc, theta)
 
-    t_train = torch.linspace(0.,1.,1000) # Ask about the extent here
-    t_eval = torch.linspace(0.,2.,1000)
-    t_test = torch.linspace(0,5,100)
+    t_train = torch.linspace(0.,1.,args.train_size) # Ask about the extent here
+    t_eval = torch.linspace(0.,2.,args.eval_size)
+    t_test = torch.linspace(0,5,args.test_size)
 
 elif args.dataset == 'Clock':
     #7
@@ -129,18 +132,18 @@ elif args.dataset == 'Clock':
                         .28, .5, .089, .52, 2.1, .052, .72])
     datfunc = Dat.Clock(theta)
 
-    t_train = torch.linspace(0.,5.,1000)
-    t_eval = torch.linspace(0.,10.,1000)
-    t_test = torch.linspace(0,20,100)
+    t_train = torch.linspace(0.,5.,args.train_size)
+    t_eval = torch.linspace(0.,10.,args.eval_size)
+    t_test = torch.linspace(0,20,args.test_size)
 
 elif args.dataset == 'ProteinTransduction':
     #8
     X0 = torch.tensor([1., 0., 1., 0., 0.])
     theta = [0.07, 0.6, 0.05, 0.3, 0.017, 0.3]
     datfunc = Dat.ProteinTransduction(theta)
-    t_train = torch.linspace(0.,25.,1000)
-    t_eval = torch.linspace(0.,100.,1000)
-    t_test = torch.linspace(0,200,1000)
+    t_train = torch.linspace(0.,25.,args.train_size)
+    t_eval = torch.linspace(0.,100.,args.eval_size)
+    t_test = torch.linspace(0,200,args.test_size)
 
 
 X_train = Dat.generate_data(datfunc, X0, t_train, method=args.integrate_method)

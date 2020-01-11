@@ -56,9 +56,9 @@ class Trainer(object):
             theta = [1.0, 0.1, 1.5, 0.75]
             datfunc = Dat.LotkaVolterra(theta)
 
-            t_train = torch.linspace(0.,25.,1000)
-            t_eval = torch.linspace(0.,100.,1000)
-            t_test = torch.linspace(0,200,100)
+            t_train = torch.linspace(0.,25.,self.args.train_size)
+            t_eval = torch.linspace(0.,100.,self.args.eval_size)
+            t_test = torch.linspace(0,200,self.args.test_size)
 
         elif args.dataset == 'FHN':
             #2
@@ -67,9 +67,9 @@ class Trainer(object):
             theta = [0.2,0.2,3.0]
             datfunc = Dat.FHN(theta)
 
-            t_train = torch.linspace(0.,25.,1000)
-            t_eval = torch.linspace(0.,100.,1000)
-            t_test = torch.linspace(0,200,100)
+            t_train = torch.linspace(0.,25.,self.args.train_size)
+            t_eval = torch.linspace(0.,100.,self.args.eval_size)
+            t_test = torch.linspace(0,200,self.args.test_size)
 
         elif args.dataset == 'Lorenz63':
             #3
@@ -78,9 +78,9 @@ class Trainer(object):
             theta = [10.0, 28.0, 8.0/3.0]
             datfunc = Dat.Lorenz63(theta)
 
-            t_train = torch.linspace(0.,25.,1000) # Need to ask about extents for test case Lorenz
-            t_eval = torch.linspace(0.,50.,100)
-            t_test = torch.linspace(0.,100.,100)
+            t_train = torch.linspace(0.,25.,self.args.train_size) # Need to ask about extents for test case Lorenz
+            t_eval = torch.linspace(0.,50.,self.args.eval_size)
+            t_test = torch.linspace(0.,100.,self.args.test_size)
 
         # Need X0 and parameters
         # elif args.dataset == 'Lorenz96':
@@ -95,9 +95,9 @@ class Trainer(object):
             theta = [.5, .8, .4]
             datfunc = Dat.ChemicalReactionSimple(theta)
 
-            t_train = torch.linspace(0.,25.,1000)
-            t_eval = torch.linspace(0.,100.,1000)
-            t_test = torch.linspace(0,200,100)
+            t_train = torch.linspace(0.,25.,self.args.train_size)
+            t_eval = torch.linspace(0.,100.,self.args.eval_size)
+            t_test = torch.linspace(0,200,self.args.test_size)
 
         elif args.dataset == 'Chemostat':
             #6
@@ -115,9 +115,9 @@ class Trainer(object):
             feedConc = 3.
             datfunc = Dat.Chemostat(6, flowrate, feedConc, theta)
 
-            t_train = torch.linspace(0.,1.,1000) # Ask about the extent here
-            t_eval = torch.linspace(0.,2.,1000)
-            t_test = torch.linspace(0,5,100)
+            t_train = torch.linspace(0.,1.,self.args.train_size) # Ask about the extent here
+            t_eval = torch.linspace(0.,2.,self.args.eval_size)
+            t_test = torch.linspace(0,5.,self.args.test_size)
 
         elif args.dataset == 'Clock':
             #7
@@ -126,18 +126,18 @@ class Trainer(object):
                                 .28, .5, .089, .52, 2.1, .052, .72])
             datfunc = Dat.Clock(theta)
 
-            t_train = torch.linspace(0.,5.,1000)
-            t_eval = torch.linspace(0.,10.,1000)
-            t_test = torch.linspace(0,20,100)
+            t_train = torch.linspace(0.,5.,self.args.train_size)
+            t_eval = torch.linspace(0.,10.,self.args.eval_size)
+            t_test = torch.linspace(0,20,self.args.test_size)
 
         elif args.dataset == 'ProteinTransduction':
             #8
             X0 = torch.tensor([1., 0., 1., 0., 0.])
             theta = [0.07, 0.6, 0.05, 0.3, 0.017, 0.3]
             datfunc = Dat.ProteinTransduction(theta)
-            t_train = torch.linspace(0.,25.,1000)
-            t_eval = torch.linspace(0.,100.,1000)
-            t_test = torch.linspace(0,200,1000)
+            t_train = torch.linspace(0.,25.,self.args.train_size)
+            t_eval = torch.linspace(0.,100.,self.args.eval_size)
+            t_test = torch.linspace(0,200.,self.args.test_size)
 
         self.t_train = t_train
         self.t_eval = t_eval

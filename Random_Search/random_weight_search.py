@@ -134,6 +134,9 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Args for SHA with weight sharing')
     parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+    parser.add_argument('--train_size', type=int, default=1000, help='size of the training set')
+    parser.add_argument('--eval_size', type=int, default=1000, help='size of the validation set')
+    parser.add_argument('--test_size', type=int, default=1000, help='size of the test set')
     parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
     parser.add_argument('--seed', dest='seed', type=int, default=1)
     parser.add_argument('--epochs', dest='epochs', type=int, default=50)
