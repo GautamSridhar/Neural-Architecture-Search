@@ -69,7 +69,7 @@ learn_arg.add_argument('--entropy_coeff', type=float, default=1e-4)
 
 # Shared Network parameters
 learn_arg.add_argument('--shared_initial_step', type=int, default=0)
-learn_arg.add_argument('--shared_max_step', type=int, default=100,
+learn_arg.add_argument('--shared_max_step', type=int, default=50,
                        help='step for shared parameters')
 learn_arg.add_argument('--shared_num_sample', type=int, default=1,
                        help='# of Monte Carlo samples')
@@ -83,6 +83,9 @@ learn_arg.add_argument('--derive_num_sample', type=int, default=10)
 # Misc
 misc_arg = add_argument_group('Misc')
 misc_arg.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+parser.add_argument('--train_size', type=int, default=1000, help='size of the training set')
+parser.add_argument('--eval_size', type=int, default=1000, help='size of the validation set')
+parser.add_argument('--test_size', type=int, default=1000, help='size of the test set')
 misc_arg.add_argument('--batch_size', type=int, default=50, help='batch size of data')
 misc_arg.add_argument('--batch_time', type=int, default=25, help='batch time of data')
 misc_arg.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')

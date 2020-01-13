@@ -56,9 +56,9 @@ def main(args, ITE=0):
         theta = [1.0, 0.1, 1.5, 0.75]
         datfunc = Dat.LotkaVolterra(theta)
 
-        t_train = torch.linspace(0.,25.,1000)
-        t_eval = torch.linspace(0.,100.,1000)
-        t_test = torch.linspace(0,200,100)
+        t_train = torch.linspace(0.,25.,args.train_size)
+        t_eval = torch.linspace(0.,100.,args.eval_size)
+        t_test = torch.linspace(0,200,args.test_size)
 
     elif args.dataset == 'FHN':
         #2
@@ -67,9 +67,9 @@ def main(args, ITE=0):
         theta = [0.2,0.2,3.0]
         datfunc = Dat.FHN(theta)
 
-        t_train = torch.linspace(0.,25.,1000)
-        t_eval = torch.linspace(0.,100.,1000)
-        t_test = torch.linspace(0,200,100)
+        t_train = torch.linspace(0.,25.,args.train_size)
+        t_eval = torch.linspace(0.,100.,args.eval_size)
+        t_test = torch.linspace(0,200,args.test_size)
 
     elif args.dataset == 'Lorenz63':
         #3
@@ -78,9 +78,9 @@ def main(args, ITE=0):
         theta = [10.0, 28.0, 8.0/3.0]
         datfunc = Dat.Lorenz63(theta)
 
-        t_train = torch.linspace(0.,25.,1000) # Need to ask about extents for test case Lorenz
-        t_eval = torch.linspace(0.,50.,100)
-        t_test = torch.linspace(0.,100.,100)
+        t_train = torch.linspace(0.,25.,args.train_size) # Need to ask about extents for test case Lorenz
+        t_eval = torch.linspace(0.,50.,args.eval_size)
+        t_test = torch.linspace(0.,100.,args.test_size)
 
     # Need X0 and parameters
     # elif args.dataset == 'Lorenz96':
@@ -95,9 +95,9 @@ def main(args, ITE=0):
         theta = [.5, .8, .4]
         datfunc = Dat.ChemicalReactionSimple(theta)
 
-        t_train = torch.linspace(0.,25.,1000)
-        t_eval = torch.linspace(0.,100.,1000)
-        t_test = torch.linspace(0,200,100)
+        t_train = torch.linspace(0.,25.,args.train_size)
+        t_eval = torch.linspace(0.,100.,args.eval_size)
+        t_test = torch.linspace(0,200,args.test_size)
 
     elif args.dataset == 'Chemostat':
         #6
@@ -115,9 +115,9 @@ def main(args, ITE=0):
         feedConc = 3.
         datfunc = Dat.Chemostat(6, flowrate, feedConc, theta)
 
-        t_train = torch.linspace(0.,1.,1000) # Ask about the extent here
-        t_eval = torch.linspace(0.,2.,1000)
-        t_test = torch.linspace(0,5,100)
+        t_train = torch.linspace(0.,1.,args.train_size) # Ask about the extent here
+        t_eval = torch.linspace(0.,2.,args.eval_size)
+        t_test = torch.linspace(0,5,args.test_size)
 
     elif args.dataset == 'Clock':
         #7
@@ -126,18 +126,18 @@ def main(args, ITE=0):
                             .28, .5, .089, .52, 2.1, .052, .72])
         datfunc = Dat.Clock(theta)
 
-        t_train = torch.linspace(0.,5.,1000)
-        t_eval = torch.linspace(0.,10.,1000)
-        t_test = torch.linspace(0,20,100)
+        t_train = torch.linspace(0.,5.,args.train_size)
+        t_eval = torch.linspace(0.,10.,args.eval_size)
+        t_test = torch.linspace(0,20,args.test_size)
 
     elif args.dataset == 'ProteinTransduction':
         #8
         X0 = torch.tensor([1., 0., 1., 0., 0.])
         theta = [0.07, 0.6, 0.05, 0.3, 0.017, 0.3]
         datfunc = Dat.ProteinTransduction(theta)
-        t_train = torch.linspace(0.,25.,1000)
-        t_eval = torch.linspace(0.,100.,1000)
-        t_test = torch.linspace(0,200,1000)
+        t_train = torch.linspace(0.,25.,args.train_size)
+        t_eval = torch.linspace(0.,100.,args.eval_size)
+        t_test = torch.linspace(0,200,args.test_size)
 
 
     X_train = Dat.generate_data(datfunc, X0, t_train, method=args.integrate_method)
@@ -227,7 +227,7 @@ def main(args, ITE=0):
                 step = 0
             else:
                 original_initialization(mask, initial_state_dict)
-            optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+            optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, weight_decay=1e-4)
         print(f"\n--- Pruning Level [{ITE}:{_ite}/{ITERATION}]: ---")
 
         # Print the table of Nonzeros in each layer
@@ -316,13 +316,13 @@ def train(model, train_loader, optimizer, criterion, t_train):
     device = torch.device("cpu")
     optimizer.zero_grad()
     #imgs, targets = next(train_loader)
-    batch_x0, batch_t, batch_x, batch_der = Dat.get_batch(1000, args.batch_time, args.batch_size,
+    batch_x0, batch_t, batch_x, batch_der = Dat.get_batch(args.train_size, args.batch_time, args.batch_size,
                                                       train_loader[0], train_loader[1], t_train)
 
     batch_regress = batch_x.view(args.batch_size, args.batch_time, -1)
     batch_der = batch_der.view(args.batch_size, args.batch_time, -1)
 
-    batch_regress, batch_der = batch_regress.to(device), batch_der.to(device)
+    # batch_regress, batch_der = batch_regress.to(device), batch_der.to(device)
 
     regress_pred = model(t=None, x=batch_regress.float())
     loss_regress = criterion(regress_pred, batch_der.float())
@@ -347,6 +347,7 @@ def train(model, train_loader, optimizer, criterion, t_train):
             grad_tensor = np.where(tensor < EPS, 0, grad_tensor)
             p.grad.data = torch.from_numpy(grad_tensor).to(device)
     optimizer.step()
+
     return loss.item()
 
 # Function for Testing
@@ -499,12 +500,15 @@ if __name__=="__main__":
     # Arguement Parser
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+    parser.add_argument('--train_size', type=int, default=1000, help='size of the training set')
+    parser.add_argument('--eval_size', type=int, default=1000, help='size of the validation set')
+    parser.add_argument('--test_size', type=int, default=1000, help='size of the test set')
     parser.add_argument('--batch_size', type=int, default=25, help='batch size of data')
     parser.add_argument('--batch_time', type=int, default=10, help='batch time of data')
     parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
     parser.add_argument("--lr",default= 1.2e-2, type=float, help="Learning rate")
     parser.add_argument("--start_iter", default=0, type=int)
-    parser.add_argument("--end_iter", default=100, type=int)
+    parser.add_argument("--end_iter", default=10, type=int)
     parser.add_argument("--print_freq", default=1, type=int)
     parser.add_argument("--valid_freq", default=1, type=int)
     parser.add_argument("--resume", action="store_true")

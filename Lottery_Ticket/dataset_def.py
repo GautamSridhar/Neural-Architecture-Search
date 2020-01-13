@@ -246,11 +246,10 @@ def generate_data(datfunc, true_x0,t,method=None):
         true_x = odeint(datfunc, true_x0, t, method=method)
     return true_x
 
-
-def get_batch(data_size, batch_time, batch_size,true_x, true_der, t):
+def get_batch(data_size, batch_time, batch_size, true_y, true_der, t):
     s = torch.from_numpy(np.random.choice(np.arange(data_size - batch_time, dtype=np.int64), batch_size, replace=False))
-    batch_x0 = true_x[s]  # (Batch_Size, Dimension)
-    batch_t = t[:batch_time]  # (Time_step)
-    batch_x = torch.stack([true_x[s + i] for i in range(batch_time)], dim=0)  # (Time_step, Batch_size, Dimension)
+    batch_y0 = true_y[s]  # (M, D)
+    batch_t = t[:batch_time]  # (T)
+    batch_y = torch.stack([true_y[s + i] for i in range(batch_time)], dim=0)  # (T, M, D)
     batch_der = torch.stack([true_der[s + i] for i in range(batch_time)], dim=0)
-    return batch_x0, batch_t, batch_x, batch_der
+    return batch_y0, batch_t, batch_y, batch_der

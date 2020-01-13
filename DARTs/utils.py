@@ -42,6 +42,7 @@ def save_checkpoint(state, is_best, save):
 def save(model, model_path):
     """ Save model."""
     torch.save(model.state_dict(), model_path)
+    print("model saved")
 
 
 def load(model, model_path):

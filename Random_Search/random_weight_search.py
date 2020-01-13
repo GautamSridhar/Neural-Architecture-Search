@@ -7,6 +7,7 @@ import inspect
 import pickle
 import argparse
 import numpy as np
+from tqdm import tqdm
 
 from darts_wrapper import DartsWrapper
 import matplotlib.pyplot as plt
@@ -56,6 +57,7 @@ class Random_NAS:
         fig,ax = plt.subplots(figsize=(20,20))
         plt.ion()
         while self.iters < self.B:
+            logging.info('Epoch: %03d', self.iters)
             arch = self.get_arch()
             self.model.train_batch(arch,self.iters,ax)
             self.iters += 1
@@ -138,11 +140,14 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Args for SHA with weight sharing')
     parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+    parser.add_argument('--train_size', type=int, default=1000, help='size of the training set')
+    parser.add_argument('--eval_size', type=int, default=1000, help='size of the validation set')
+    parser.add_argument('--test_size', type=int, default=1000, help='size of the test set')
     parser.add_argument('--batch_size', type=int, default=50, help='batch size of data')
     parser.add_argument('--batch_time', type=int, default=25, help='batch time of data')
     parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
     parser.add_argument('--seed', dest='seed', type=int, default=1)
-    parser.add_argument('--epochs', dest='epochs', type=int, default=50)
+    parser.add_argument('--epochs', dest='epochs', type=int, default=10)
     parser.add_argument('--save_dir', dest='save_dir', type=str, default=None)
     parser.add_argument('--eval_only', dest='eval_only', type=int, default=0)
     parser.add_argument('--network_inputsize', type=int, default=2, help='input size of the network')
@@ -153,7 +158,7 @@ if __name__ == "__main__":
     parser.add_argument('--learning_rate_min', type=float, default=0.001, help='min lr for scheduler')
     parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
     parser.add_argument('--momentume', type=float, default=0.9, help='momentum')
-    parser.add_argument('--report_freq', type=int, default=50, help='when to check performance on test set.')
+    parser.add_argument('--report_freq', type=int, default=1, help='when to check performance on test set.')
     args = parser.parse_args()
 
     main(args)

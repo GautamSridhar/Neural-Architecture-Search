@@ -4,6 +4,7 @@ import time
 import glob
 import numpy as np
 import torch
+from tqdm import tqdm
 import utils
 import logging
 import argparse
@@ -22,7 +23,10 @@ from architect import Architect
 
 
 parser = argparse.ArgumentParser("Regression Search")
-parser.add_argument('--dataset', type=str, default='Chemostat', help='dataset to be used')
+parser.add_argument('--dataset', type=str, default='LV', help='dataset to be used')
+parser.add_argument('--train_size', type=int, default=1000, help='size of the training set')
+parser.add_argument('--eval_size', type=int, default=1000, help='size of the validation set')
+parser.add_argument('--test_size', type=int, default=1000, help='size of the test set')
 parser.add_argument('--batch_size', type=int, default=50, help='batch size of data')
 parser.add_argument('--batch_time', type=int, default=25, help='batch time of data')
 parser.add_argument('--integrate_method', type=str, default='dopri5', help='method for numerical integration')
@@ -30,15 +34,15 @@ parser.add_argument('--learning_rate', type=float, default=0.025, help='init lea
 parser.add_argument('--learning_rate_min', type=float, default=0.001, help='min learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
-parser.add_argument('--epochs', type=int, default=500, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=100, help='num of training epochs')
 parser.add_argument('--network_inputsize', type=int, default=2, help='input size of the network')
 parser.add_argument('--network_outputsize', type=int, default=2, help='output size of the network')
 parser.add_argument('--max_width', type=int, default=16, help='max width of the network')
 parser.add_argument('--max_depth', type=int, default=4, help='total number of layers in the network')
 parser.add_argument('--model_path', type=str, default='saved_models', help='path to save the model')
-parser.add_argument('--save', type=str, default='test-nnode', help='experiment name')
+parser.add_argument('--save', type=str, default='test', help='experiment name')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
-parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
+parser.add_argument('--unrolled', action='store_true', default=True, help='use one-step unrolled validation loss')
 parser.add_argument('--arch_learning_rate', type=float, default=1e-2, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 parser.add_argument('--report_freq', type=float, default=5, help='report frequency')
@@ -63,9 +67,9 @@ if args.dataset == 'LV':
     theta = [1.0, 0.1, 1.5, 0.75]
     datfunc = Dat.LotkaVolterra(theta)
 
-    t_train = torch.linspace(0.,25.,1000)
-    t_eval = torch.linspace(0.,100.,1000)
-    t_test = torch.linspace(0,200,100)
+    t_train = torch.linspace(0.,25.,args.train_size)
+    t_eval = torch.linspace(0.,100.,args.eval_size)
+    t_test = torch.linspace(0,200,args.test_size)
 
 elif args.dataset == 'FHN':
     #2
@@ -74,9 +78,9 @@ elif args.dataset == 'FHN':
     theta = [0.2,0.2,3.0]
     datfunc = Dat.FHN(theta)
 
-    t_train = torch.linspace(0.,25.,1000)
-    t_eval = torch.linspace(0.,100.,1000)
-    t_test = torch.linspace(0,200,100)
+    t_train = torch.linspace(0.,25.,args.train_size)
+    t_eval = torch.linspace(0.,100.,args.eval_size)
+    t_test = torch.linspace(0,200,args.test_size)
 
 elif args.dataset == 'Lorenz63':
     #3
@@ -85,9 +89,9 @@ elif args.dataset == 'Lorenz63':
     theta = [10.0, 28.0, 8.0/3.0]
     datfunc = Dat.Lorenz63(theta)
 
-    t_train = torch.linspace(0.,25.,1000) # Need to ask about extents for test case Lorenz
-    t_eval = torch.linspace(0.,50.,100)
-    t_test = torch.linspace(0.,100.,100)
+    t_train = torch.linspace(0.,25.,args.train_size) # Need to ask about extents for test case Lorenz
+    t_eval = torch.linspace(0.,50.,args.eval_size)
+    t_test = torch.linspace(0.,100.,args.test_size)
 
 # Need X0 and parameters
 # elif args.dataset == 'Lorenz96':
@@ -102,9 +106,9 @@ elif args.dataset == 'ChemicalReactionSimple':
     theta = [.5, .8, .4]
     datfunc = Dat.ChemicalReactionSimple(theta)
 
-    t_train = torch.linspace(0.,25.,1000)
-    t_eval = torch.linspace(0.,100.,1000)
-    t_test = torch.linspace(0,200,100)
+    t_train = torch.linspace(0.,25.,args.train_size)
+    t_eval = torch.linspace(0.,100.,args.eval_size)
+    t_test = torch.linspace(0,200,args.test_size)
 
 elif args.dataset == 'Chemostat':
     #6
@@ -122,9 +126,9 @@ elif args.dataset == 'Chemostat':
     feedConc = 3.
     datfunc = Dat.Chemostat(6, flowrate, feedConc, theta)
 
-    t_train = torch.linspace(0.,1.,1000) # Ask about the extent here
-    t_eval = torch.linspace(0.,2.,1000)
-    t_test = torch.linspace(0,5,100)
+    t_train = torch.linspace(0.,1.,args.train_size) # Ask about the extent here
+    t_eval = torch.linspace(0.,2.,args.eval_size)
+    t_test = torch.linspace(0,5,args.test_size)
 
 elif args.dataset == 'Clock':
     #7
@@ -133,18 +137,18 @@ elif args.dataset == 'Clock':
                         .28, .5, .089, .52, 2.1, .052, .72])
     datfunc = Dat.Clock(theta)
 
-    t_train = torch.linspace(0.,5.,1000)
-    t_eval = torch.linspace(0.,10.,1000)
-    t_test = torch.linspace(0,20,100)
+    t_train = torch.linspace(0.,5.,args.train_size)
+    t_eval = torch.linspace(0.,10.,args.eval_size)
+    t_test = torch.linspace(0,20,args.test_size)
 
 elif args.dataset == 'ProteinTransduction':
     #8
     X0 = torch.tensor([1., 0., 1., 0., 0.])
     theta = [0.07, 0.6, 0.05, 0.3, 0.017, 0.3]
     datfunc = Dat.ProteinTransduction(theta)
-    t_train = torch.linspace(0.,25.,1000)
-    t_eval = torch.linspace(0.,100.,1000)
-    t_test = torch.linspace(0,200,1000)
+    t_train = torch.linspace(0.,25.,args.train_size)
+    t_eval = torch.linspace(0.,100.,args.eval_size)
+    t_test = torch.linspace(0,200,args.test_size)
 
 
 X_train = Dat.generate_data(datfunc, X0, t_train, method=args.integrate_method)
@@ -155,9 +159,6 @@ dx_dt_train = datfunc(t=None,x=X_train.numpy().T)
 dx_dt_eval = datfunc(t=None,x=X_eval.numpy().T)
 dx_dt_test = datfunc(t=None,x=X_test.numpy().T)
 
-plt.plot(t_test.numpy(), X_test[:,2].numpy())
-plt.show()
-time.sleep(60)
 
 # Xtrain_noisy = X_train + 0.75*torch.randn(X_train.shape[0],X_train.shape[1])
 
@@ -218,19 +219,12 @@ def main():
 
     plt.ion()
     for epoch in range(args.epochs):
-        lr = scheduler.get_lr()[0]
         # lr = args.learning_rate
-        logging.info('epoch %d lr %e', epoch, lr)
-
-        genotype = model.genotype()
-        logging.info('genotype = %s', genotype)
-
-        print(F.softmax(model.w_alpha, dim=-1))
+        logging.info('epoch %d', epoch)
 
         # training
-        train_acc, train_obj = train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, epoch)
+        train_acc, train_obj = train(train_queue, valid_queue, model, architect, criterion, optimizer, scheduler, epoch)
         logging.info('train_acc %f', train_acc)
-        scheduler.step()
 
         # validation
         valid_acc, valid_obj = infer(valid_queue, model, criterion, epoch)
@@ -246,17 +240,24 @@ def main():
 
 
 
-def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, step):
+def train(train_queue, valid_queue, model, architect, criterion, optimizer, scheduler, step):
     objs = utils.AverageMeter()
     mae = utils.AverageMeter()
 
     # Declare batches and randomly sample batches.
-    batch_x0, batch_t, batch_x, batch_der = get_batch(1000, args.batch_time, args.batch_size,
-                                                      train_queue[0], train_queue[1], t_train)
-
     n = train_queue[0].shape[0]
 
-    architect.step(train_queue[0], train_queue[1], valid_queue[0], valid_queue[1], lr, optimizer, unrolled=args.unrolled)
+    lr = scheduler.get_lr()[0]
+
+    genotype = model.genotype()
+    logging.info('genotype = %s', genotype)
+
+    print(F.softmax(model.w_alpha, dim=-1))
+
+    batch_x0, batch_t, batch_x, batch_der = Dat.get_batch(args.train_size, args.batch_time, args.batch_size,
+                                                          train_queue[0], train_queue[1], t_train)
+
+    architect.step(batch_x, batch_der, valid_queue[0], valid_queue[1], lr, optimizer, unrolled=args.unrolled)
 
     optimizer.zero_grad()
     batch_regress = batch_x.view(args.batch_size, args.batch_time, -1)
@@ -269,13 +270,14 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
     loss_node = criterion(pred_x.float(),batch_x.float())
 
     loss_total = loss_regress + loss_node
-    logits = model(t=None, x=train_queue[0])
 
     loss_total.backward()
     optimizer.step()
+    scheduler.step()
 
+    logits = model(t=None, x=train_queue[0])
     train_mae = utils.accuracy(logits, train_queue[1])
-    objs.update(loss_total.data.numpy(), n)
+    objs.update(loss_total, n)
     mae.update(train_mae.data.numpy(), n)
 
     if step % args.report_freq == 0:

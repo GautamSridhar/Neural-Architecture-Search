@@ -4,6 +4,7 @@ import glob
 import math
 import os
 from scipy import integrate
+from tqdm import tqdm
 
 import numpy as np
 import torch
@@ -58,9 +59,9 @@ class Trainer(object):
             theta = [1.0, 0.1, 1.5, 0.75]
             datfunc = Dat.LotkaVolterra(theta)
 
-            t_train = torch.linspace(0.,25.,1000)
-            t_eval = torch.linspace(0.,100.,1000)
-            t_test = torch.linspace(0,200,100)
+            t_train = torch.linspace(0.,25.,args.train_size)
+            t_eval = torch.linspace(0.,100.,args.eval_size)
+            t_test = torch.linspace(0,200,args.test_size)
 
         elif args.dataset == 'FHN':
             #2
@@ -69,9 +70,9 @@ class Trainer(object):
             theta = [0.2,0.2,3.0]
             datfunc = Dat.FHN(theta)
 
-            t_train = torch.linspace(0.,25.,1000)
-            t_eval = torch.linspace(0.,100.,1000)
-            t_test = torch.linspace(0,200,100)
+            t_train = torch.linspace(0.,25.,args.train_size)
+            t_eval = torch.linspace(0.,100.,args.eval_size)
+            t_test = torch.linspace(0,200,args.test_size)
 
         elif args.dataset == 'Lorenz63':
             #3
@@ -80,9 +81,9 @@ class Trainer(object):
             theta = [10.0, 28.0, 8.0/3.0]
             datfunc = Dat.Lorenz63(theta)
 
-            t_train = torch.linspace(0.,25.,1000) # Need to ask about extents for test case Lorenz
-            t_eval = torch.linspace(0.,50.,100)
-            t_test = torch.linspace(0.,100.,100)
+            t_train = torch.linspace(0.,25.,args.train_size) # Need to ask about extents for test case Lorenz
+            t_eval = torch.linspace(0.,50.,args.eval_size)
+            t_test = torch.linspace(0.,100.,args.test_size)
 
         # Need X0 and parameters
         # elif args.dataset == 'Lorenz96':
@@ -97,9 +98,9 @@ class Trainer(object):
             theta = [.5, .8, .4]
             datfunc = Dat.ChemicalReactionSimple(theta)
 
-            t_train = torch.linspace(0.,25.,1000)
-            t_eval = torch.linspace(0.,100.,1000)
-            t_test = torch.linspace(0,200,100)
+            t_train = torch.linspace(0.,25.,args.train_size)
+            t_eval = torch.linspace(0.,100.,args.eval_size)
+            t_test = torch.linspace(0,200,args.test_size)
 
         elif args.dataset == 'Chemostat':
             #6
@@ -117,9 +118,9 @@ class Trainer(object):
             feedConc = 3.
             datfunc = Dat.Chemostat(6, flowrate, feedConc, theta)
 
-            t_train = torch.linspace(0.,1.,1000) # Ask about the extent here
-            t_eval = torch.linspace(0.,2.,1000)
-            t_test = torch.linspace(0,5,100)
+            t_train = torch.linspace(0.,1.,args.train_size) # Ask about the extent here
+            t_eval = torch.linspace(0.,2.,args.eval_size)
+            t_test = torch.linspace(0,5,args.test_size)
 
         elif args.dataset == 'Clock':
             #7
@@ -128,18 +129,18 @@ class Trainer(object):
                                 .28, .5, .089, .52, 2.1, .052, .72])
             datfunc = Dat.Clock(theta)
 
-            t_train = torch.linspace(0.,5.,1000)
-            t_eval = torch.linspace(0.,10.,1000)
-            t_test = torch.linspace(0,20,100)
+            t_train = torch.linspace(0.,5.,args.train_size)
+            t_eval = torch.linspace(0.,10.,args.eval_size)
+            t_test = torch.linspace(0,20,args.test_size)
 
         elif args.dataset == 'ProteinTransduction':
             #8
             X0 = torch.tensor([1., 0., 1., 0., 0.])
             theta = [0.07, 0.6, 0.05, 0.3, 0.017, 0.3]
             datfunc = Dat.ProteinTransduction(theta)
-            t_train = torch.linspace(0.,25.,1000)
-            t_eval = torch.linspace(0.,100.,1000)
-            t_test = torch.linspace(0,200,1000)
+            t_train = torch.linspace(0.,25.,args.train_size)
+            t_eval = torch.linspace(0.,100.,args.eval_size)
+            t_test = torch.linspace(0,200,args.test_size)
 
         self.t_train = t_train
         self.t_eval = t_eval
@@ -230,7 +231,10 @@ class Trainer(object):
                     self.evaluate(best_dag)  # What is max_num?
                 self.save_model()
 
-            # Add a learning rate scheduler here.
+        with torch.no_grad():
+            best_dag = dag if dag else self.derive()
+            self.evaluate(best_dag)  # What is max_num?
+        self.save_model()
 
 
     def get_loss(self, inputs, targets, dags, mode='Train'):
@@ -241,14 +245,15 @@ class Trainer(object):
         if not isinstance(dags, list):
             dags = [dags]
 
-        loss = 0
         if mode == 'Train':
-            batch_x0, batch_t, batch_x, batch_der = Dat.get_batch(1000, self.args.batch_time, self.args.batch_size,
-                                                              inputs, targets, self.t_train)
-            batch_regress = batch_x.view(self.args.batch_size, self.args.batch_time, -1)
-            batch_der = batch_der.view(self.args.batch_size, self.args.batch_time, -1)
-
+            loss_fulldat = 0
             for dag in dags:
+                batch_x0, batch_t, batch_x, batch_der = Dat.get_batch(self.args.train_size, self.args.batch_time, self.args.batch_size,
+                                                                      inputs, targets, self.t_train)
+                batch_regress = batch_x.view(self.args.batch_size, self.args.batch_time, -1)
+                batch_der = batch_der.view(self.args.batch_size, self.args.batch_time, -1)
+
+                self.shared_optim.zero_grad()
                 self.shared.dag = dag
                 regress_pred = self.shared(t=None, inputs=batch_regress.float())
                 loss_regress = self.criterion_shared(regress_pred, batch_der.float())
@@ -260,11 +265,16 @@ class Trainer(object):
 
                 output = self.shared(t=None, inputs=inputs)
                 sample_loss = self.criterion_shared(output, targets)
-                loss += sample_loss
 
-                return loss_total, loss
+                loss_total.backward()
+                self.shared_optim.step()
+
+                loss_fulldat += sample_loss
+
+                return loss_total, loss_fulldat
 
         elif mode == 'Valid':
+            loss = 0
             for dag in dags:
                 self.shared.dag = dag
                 output = self.shared(t=None, inputs=inputs)
@@ -292,8 +302,8 @@ class Trainer(object):
         else:
             max_step = min(self.args.shared_max_step, max_step)
 
-        raw_total_loss = 0
         total_loss = 0
+        loss_fulldat_summ = 0
         train_idx = 0
         # TODO(brendan): Why - 1 - 1?
         
@@ -306,24 +316,15 @@ class Trainer(object):
             with torch.no_grad():
                 dags = dag if dag else self.controller.sample(self.args.shared_num_sample)
 
-            loss_total, loss = self.get_loss(inputs, targets, dags, mode='Train')
-            raw_total_loss += loss.data
-
-            # update
-            self.shared_optim.zero_grad()
-            loss_total.backward()
-
-            self.shared_optim.step()
-
-            # Add learning rate scheduler here instead
-
-            total_loss += loss.data
+            loss_total, loss_fulldat = self.get_loss(inputs, targets, dags, mode='Train')
+            total_loss += loss_total.data
+            loss_fulldat_summ += loss_fulldat.data
 
             if ((step % self.args.log_step_shared) == 0) and (step > 0):
                 # Need to change summarize to include only loss rather than these
-                self._summarize_shared_train(total_loss, raw_total_loss)
-                raw_total_loss = 0
+                self._summarize_shared_train(total_loss, loss_fulldat_summ)
                 total_loss = 0
+                loss_fulldat_summ = 0
 
 
     def get_reward(self, dag, entropies):
@@ -565,14 +566,14 @@ class Trainer(object):
             f'| R {avg_reward:.5f} | entropy {avg_entropy:.4f} '
             f'| loss {cur_loss:.5f}')
 
-    def _summarize_shared_train(self, total_loss, raw_total_loss):
+    def _summarize_shared_train(self, total_loss, loss_fulldat):
         """Logs a set of training steps."""
         cur_loss = utils.to_item(total_loss) / self.args.log_step_shared
         # NOTE(brendan): The raw loss, without adding in the activation
         # regularization terms, should be used to compute ppl.
-        cur_raw_loss = utils.to_item(raw_total_loss) / self.args.log_step_shared
+        cur_loss_fulldat = utils.to_item(loss_fulldat) / self.args.log_step_shared
 
         logger.info(f'| epoch {self.epoch:3d} '
                     f'| lr {self.args.shared_lr:.2f} '
-                    f'| raw loss {cur_raw_loss:.2f} '
-                    f'| loss {cur_loss:.2f} ')
+                    f'| raw loss {total_loss:.2f} '
+                    f'| loss_fulldat {cur_loss_fulldat:.2f} ')
